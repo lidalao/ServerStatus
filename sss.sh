@@ -91,7 +91,7 @@ install_dashboard(){
     
     install_docker
 
-    if [  "$(docker ps -q -f name=tg4sss)" ]; then
+    if [  "$(docker ps -q -f name=bot4sss)" ]; then
         return 0
     fi
 
