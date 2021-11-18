@@ -121,8 +121,9 @@ def add():
     item['host'] = jjname
     item['password'] = getPasswd()
     jjs['servers'].append(item)
-
     saveJJs()
+
+    print("操作完成，等待服务重启")
     restartSSS()
 
     print("添加成功!")
@@ -172,10 +173,9 @@ def update():
         print('未做任何更新，直接返回')
         _back()
         return
-    
     saveJJs()
+    print("操作完成，等待服务重启")
     restartSSS()
-
     print("更新成功!")
     _show()
     _back()
@@ -202,8 +202,8 @@ def remove():
 
     del jjs['servers'][int(idx)]
     saveJJs()
+    print("操作完成，等待服务重启")
     restartSSS()
-
     print("删除成功!")
     _show()
     _back()
