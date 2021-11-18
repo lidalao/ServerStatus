@@ -58,8 +58,7 @@ def sscmd(address):
         try:
             jsonR = r.json()
         except Exception as e:
-            #FIXME: 无任何节点时，stats.json不是一个有效的json格式文件
-            print('未发现任何节点')
+            #print('未发现任何节点')
             continue
         for i in jsonR["servers"]:
             if i["online4"] is False and i["online6"] is False:
