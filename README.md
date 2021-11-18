@@ -18,7 +18,7 @@ mkdir sss && cd sss && wget --no-check-certificate https://raw.githubusercontent
 
 ```
 
-更多信息请移步 https://lidalao.com/1.html  +1ip
+更多信息请移步 https://lidalao.com/archives/87  +1ip
 
 # 参考
 - https://github.com/cppla/ServerStatus
