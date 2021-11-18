@@ -211,6 +211,7 @@ def remove():
 def cmd():
     print("\n")
     print('- - - 欢迎使用最简洁的探针: Server Status - - -')
+    print('详细教程请参考：https://lidalao.com/archives/87')
     print("\n")
     _show()
     print("\n")
