@@ -5,7 +5,7 @@
 - 上下线通知（telegram）
 - Agent机器安装脚本改为systemd， 支持开机自启
 
->由于未改动cppla版的任何代码，所以，我愿意把这个项目称为ServerStatus的小插件
+>由于未改动cppla版的任何代码，所以，我愿意把这个项目称为ServerStatus的小插件, 理论上它可以为任何版本的ServerStatus服务
 
 
 # 安装
