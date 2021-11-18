@@ -17,6 +17,7 @@
 mkdir sss && cd sss && wget --no-check-certificate https://raw.githubusercontent.com/lidalao/ServerStatus/master/sss.sh && chmod +x ./sss.sh && sudo ./sss.sh YOUR_TG_CHAT_ID YOUR_TG_BOT_TOKEN
 
 ```
+安装成功后，web服务地址：http://ip:8081
 
 更多信息请移步 https://lidalao.com/archives/87  +1ip
 
