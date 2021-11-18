@@ -14,8 +14,7 @@
 其中，Bot token可以通过@BotFather创建机器人获取， Chat id可以通过@getuserID获取。
 
 ```
-mkdir sss && cd sss && wget --no-check-certificate https://raw.githubusercontent.com/lidalao/ServerStatus/master/sss.sh && chmod +x ./sss.sh
-sudo ./sss.sh YOUR_TG_CHAT_ID YOUR_TG_BOT_TOKEN
+mkdir sss && cd sss && wget --no-check-certificate https://raw.githubusercontent.com/lidalao/ServerStatus/master/sss.sh && chmod +x ./sss.sh && sudo ./sss.sh YOUR_TG_CHAT_ID YOUR_TG_BOT_TOKEN
 
 ```
 
