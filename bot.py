@@ -58,7 +58,7 @@ def sscmd(address):
         try:
             jsonR = r.json()
         except Exception as e:
-            #print('未发现任何节点')
+            print('未发现任何节点')
             continue
         for i in jsonR["servers"]:
             if i["online4"] is False and i["online6"] is False:
