@@ -21,6 +21,11 @@ mkdir sss && cd sss && wget --no-check-certificate https://raw.githubusercontent
 
 更多信息请移步 https://lidalao.com/archives/87  +1ip
 
+挺好用的？送作者一杯可乐？->
+ [<img src="https://user-images.githubusercontent.com/52455330/139071980-91302a8a-37b1-4196-803e-f91b1de2ee5b.gif" width="60" height="40" />](https://shop.lidalao.com/buy/4)
+
+
+
 # 参考
 - https://github.com/cppla/ServerStatus
 - https://github.com/naiba/nezha
