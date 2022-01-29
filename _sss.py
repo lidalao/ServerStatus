@@ -22,7 +22,7 @@ ip = ""
 def how2agent(user, passwd):
     print('```')
     print("\n")
-    print('curl -L {0}/sss-agent.sh  -o sss-agent.sh && chmod +x sss-agent.sh && sudo ./sss-agent.sh {1} {2} {3}'.format(GITHUB_RAW_URL, getIP(), user, passwd))
+    print('curl -L {0}/sss-agent.sh  -o sss-agent.sh && chmod +x sss-agent.sh && ./sss-agent.sh {1} {2} {3}'.format(GITHUB_RAW_URL, getIP(), user, passwd))
     print("\n")
     print('```')
 
