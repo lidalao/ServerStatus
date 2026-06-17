@@ -1,19 +1,32 @@
-version: "3"
+name: sss
+
 services:
-  sss:
+  # ServerStatus server: 接收 agent 上报(35601), 生成 json/stats.json
+  srv:
     image: cppla/serverstatus:latest
-    container_name: sss
     restart: unless-stopped
     volumes:
-      - ./config.json:/ServerStatus/server/config.json 
+      - ./config.json:/ServerStatus/server/config.json
       - ./json:/usr/share/nginx/html/json
     ports:
       - 35601:35601
-      - 8081:80 
+
+  # 前端面板: 静态资源打包进镜像, 运行时读取共享的 json/stats.json
+  web:
+    build:
+      context: ./service/web
+    restart: unless-stopped
+    volumes:
+      - ./json:/usr/share/nginx/html/json:ro
+    ports:
+      - 8081:80
+    depends_on:
+      - srv
+
+  # Telegram 上下线通知
   bot:
     build:
-      context: .
-    container_name: bot4sss
+      context: ./service/bot
     restart: unless-stopped
     environment:
       - TG_CHAT_ID=tg_chat_id

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Server Status</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/app.css">
+  <script>
+    /* set theme before paint to avoid flash */
+    (function () {
+      try {
+        var t = localStorage.getItem('theme') || 'system';
+        var d = t === 'system'
+          ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : t;
+        document.documentElement.dataset.theme = d;
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <h1>Server&nbsp;Status</h1>
+    </div>
+    <div class="topbar-right">
+      <span id="summary" class="summary"></span>
+      <span id="updated" class="updated"></span>
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button data-theme-choice="light"  title="Light">☀</button>
+        <button data-theme-choice="dark"   title="Dark">☾</button>
+        <button data-theme-choice="system" title="System">⊙</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="table-scroll">
+      <table id="grid">
+        <thead>
+          <tr>
+            <th class="c-proto">PROTOCOL</th>
+            <th class="c-month">MONTHLY ↓ | ↑</th>
+            <th class="c-name">NAME</th>
+            <th class="c-type">TYPE</th>
+            <th class="c-region">REGION</th>
+            <th class="c-uptime">UPTIME</th>
+            <th class="c-load">LOAD</th>
+            <th class="c-net">NETWORK ↓ | ↑</th>
+            <th class="c-traffic">TRAFFIC ↓ | ↑</th>
+            <th class="c-gauge">CPU</th>
+            <th class="c-gauge">RAM</th>
+            <th class="c-gauge">DISK</th>
+            <th class="c-ping">CU</th>
+            <th class="c-ping">CT</th>
+            <th class="c-ping">CM</th>
+          </tr>
+        </thead>
+        <tbody id="rows">
+          <tr class="empty"><td colspan="15">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <footer class="foot">
+      Powered by <a href="https://github.com/lidalao/ServerStatus" target="_blank" rel="noopener">ServerStatus</a>
+    </footer>
+  </main>
+
+  <script src="js/app.js" defer></script>
+</body>
+</html>

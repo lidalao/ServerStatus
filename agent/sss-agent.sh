@@ -44,7 +44,7 @@ install_base() {
 modify_agent_config() {
     echo -e "> 修改Agent配置"
 
-    wget -O $SSS_AGENT_SERVICE ${GITHUB_RAW_URL}/sss-agent.service >/dev/null 2>&1
+    wget -O $SSS_AGENT_SERVICE ${GITHUB_RAW_URL}/agent/sss-agent.service >/dev/null 2>&1
     if [[ $? != 0 ]]; then
         echo -e "${red}文件下载失败，请检查本机能否连接 ${GITHUB_RAW_URL}${plain}"
         return 0
@@ -80,7 +80,7 @@ install_agent() {
     chmod 777 -R $SSS_AGENT_PATH
 
     echo -e "正在下载监控端"
-    wget --no-check-certificate -qO client-linux.py $GITHUB_RAW_URL/client-linux.py
+    wget --no-check-certificate -qO client-linux.py $GITHUB_RAW_URL/agent/client-linux.py
     mv client-linux.py $SSS_AGENT_PATH
 
     modify_agent_config "$@"
