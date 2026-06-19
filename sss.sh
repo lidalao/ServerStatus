@@ -123,7 +123,7 @@ install_dashboard() {
 
     wget --no-check-certificate ${GITHUB_RAW_URL}/docker-compose.yml >/dev/null 2>&1
 
-    mkdir -p service/bot service/web/css service/web/js service/web/fonts
+    mkdir -p service/bot service/web/css service/web/js
     wget --no-check-certificate -qO service/bot/Dockerfile   ${GITHUB_RAW_URL}/service/bot/Dockerfile
     wget --no-check-certificate -qO service/bot/bot.py        ${GITHUB_RAW_URL}/service/bot/bot.py
     wget --no-check-certificate -qO service/web/Dockerfile    ${GITHUB_RAW_URL}/service/web/Dockerfile
@@ -131,9 +131,6 @@ install_dashboard() {
     wget --no-check-certificate -qO service/web/favicon.svg   ${GITHUB_RAW_URL}/service/web/favicon.svg
     wget --no-check-certificate -qO service/web/css/app.css   ${GITHUB_RAW_URL}/service/web/css/app.css
     wget --no-check-certificate -qO service/web/js/app.js     ${GITHUB_RAW_URL}/service/web/js/app.js
-    for w in 400 600 700; do
-        wget --no-check-certificate -qO service/web/fonts/cascadia-code-$w.woff2 ${GITHUB_RAW_URL}/service/web/fonts/cascadia-code-$w.woff2
-    done
 
     [ -f "$CONFIG_FILE" ] || echo '{"servers":[]}' > "$CONFIG_FILE"
 

@@ -1,9 +1,5 @@
 /* Server Status — modern reskin (light / dark / system) */
 
-@font-face { font-family: "Cascadia Code"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/cascadia-code-400.woff2") format("woff2"); }
-@font-face { font-family: "Cascadia Code"; font-style: normal; font-weight: 600; font-display: swap; src: url("../fonts/cascadia-code-600.woff2") format("woff2"); }
-@font-face { font-family: "Cascadia Code"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/cascadia-code-700.woff2") format("woff2"); }
-
 :root {
   /* light palette (default) */
   --bg-1: #eef2f7;
@@ -29,8 +25,8 @@
   --radius: 14px;
 
   --scanline: rgba(0, 0, 0, .04);
-  --mono: "Cascadia Code", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", ui-monospace, monospace;
-  --sans: "Cascadia Code", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", ui-monospace, monospace;
+  --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 html[data-theme="dark"] {
@@ -129,20 +125,10 @@ body {
   box-shadow: var(--shadow);
   overflow-x: auto;
 }
-table { width: 100%; min-width: 1440px; border-collapse: collapse; white-space: nowrap; table-layout: fixed; }
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 
-/* 固定列宽(table-layout:fixed): 数值长度变化不再撑动布局; 宽度按"列名+内容"留足, 不裁切 */
-.c-proto   { width: 108px; }
-.c-month   { width: 118px; }
-.c-name    { width: 132px; }
-.c-type    { width: 76px; }
-.c-region  { width: 96px; }
-.c-uptime  { width: 86px; }
-.c-load    { width: 64px; }
-.c-net     { width: 142px; }
-.c-traffic { width: 120px; }
-.c-gauge   { width: 92px; }
-.c-ping    { width: 74px; }
+/* 自动列宽: 各列按内容自适应; 唯独 NETWORK(实时速率)数值频繁变化, 固定其宽度防止整表抖动 */
+.c-net { width: 150px; min-width: 150px; }
 
 thead th {
   position: sticky; top: 0;
@@ -154,18 +140,16 @@ thead th {
   font-weight: 700;
   letter-spacing: .6px;
   text-align: left;
-  padding: 14px 14px;
+  padding: 9px 14px;
   border-bottom: 1px solid var(--border-strong);
   z-index: 2;
 }
 tbody td {
-  padding: 12px 14px;
+  padding: 7px 14px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+  line-height: 1.2;
 }
-/* 固定列宽下, 超长内容裁切而非撑破 */
-thead th, tbody td { overflow: hidden; text-overflow: ellipsis; }
-tr.exrow > td { overflow: visible; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr.row:hover { background: var(--row-hover); }
 tbody tr.offline { opacity: .5; }
@@ -206,7 +190,7 @@ tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 
 /* thin gauges */
 .gauge { min-width: 78px; }
-.gauge .g-top { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11.5px; margin-bottom: 5px; }
+.gauge .g-top { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11.5px; margin-bottom: 3px; line-height: 1.1; }
 .gauge .g-val { font-weight: 600; }
 .gauge .bar { height: 5px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .gauge .bar > i { display: block; height: 100%; border-radius: 999px; transition: width .6s cubic-bezier(.4,0,.2,1), background .3s; }
@@ -216,11 +200,13 @@ tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 .gauge.warn .bar > i { background: var(--warn) !important; }
 .gauge.bad  .bar > i { background: var(--bad) !important; }
 
-/* ping cells */
-.ping { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
-.ping.good { color: var(--ok); }
-.ping.mid  { color: var(--warn); }
-.ping.bad  { color: var(--bad); }
+/* ping cells: 丢包率(主, 配色) + 延迟(次, 暗) 双行, 不点详情即可见丢包 */
+.ping { font-family: var(--mono); font-size: 12px; display: inline-flex; flex-direction: column; line-height: 1.1; }
+.ping .p-loss { font-weight: 600; color: var(--text-dim); }
+.ping .p-ms { color: var(--text-faint); font-size: 10.5px; }
+.ping.good .p-loss { color: var(--ok); }
+.ping.mid  .p-loss { color: var(--warn); }
+.ping.bad  .p-loss { color: var(--bad); }
 
 .foot { text-align: center; color: var(--text-faint); font-size: 12px; padding: 18px 0 0; }
 .foot a { color: var(--text-dim); text-decoration: none; }

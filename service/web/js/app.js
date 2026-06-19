@@ -118,9 +118,13 @@
 
   function pingCell(time, loss, online) {
     time = Number(time); loss = Number(loss);
-    if (!online || isNaN(time) || time < 0) return '<span class="ping">-</span>';
+    if (!online || isNaN(time) || time < 0) return '<span class="ping"><span class="p-loss dim">-</span></span>';
+    if (isNaN(loss) || loss < 0) loss = 0;
     var cls = loss >= 50 ? 'bad' : loss > 0 ? 'mid' : 'good';
-    return '<span class="ping ' + cls + '">' + time + 'ms</span>';
+    var lossTxt = (loss > 0 && loss < 1) ? loss.toFixed(1) : Math.round(loss);
+    return '<span class="ping ' + cls + '">' +
+      '<span class="p-loss">' + lossTxt + '%</span>' +
+      '<span class="p-ms">' + time + 'ms</span></span>';
   }
 
   /* ----------------- render ----------------- */
