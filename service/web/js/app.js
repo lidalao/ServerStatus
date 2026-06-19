@@ -99,7 +99,7 @@
       '<svg class="ring" viewBox="0 0 36 36" aria-hidden="true">' +
         '<circle class="ring-track" cx="18" cy="18" r="15.5"></circle>' +
         '<circle class="ring-fill" cx="18" cy="18" r="15.5" pathLength="100" style="stroke-dashoffset:100" data-off="' + (100 - v) + '"></circle>' +
-      '</svg><span class="ring-val">' + v + '%</span></div>';
+      '</svg><span class="ring-val">' + v + '</span></div>';
   }
   // 就地更新一个环形单元格: 复用已有 <circle> 只改 dashoffset → 触发 CSS 过渡动画
   function updateGauge(td, kind, val, online) {
@@ -113,7 +113,7 @@
     var g = td.querySelector('.gauge');
     g.className = gaugeClass(v);
     g.setAttribute('data-kind', kind);
-    td.querySelector('.ring-val').textContent = v + '%';
+    td.querySelector('.ring-val').textContent = v;
     fill.style.strokeDashoffset = (100 - v);
   }
 

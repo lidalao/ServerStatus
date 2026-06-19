@@ -206,7 +206,7 @@ tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 .ring-val {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--mono); font-size: 9px; font-weight: 600; color: var(--text);
+  font-family: var(--mono); font-size: 10px; font-weight: 500; color: var(--text);
 }
 
 /* ping cells: 丢包率(主, 配色) + 延迟(次, 暗) 双行, 不点详情即可见丢包 */
@@ -267,5 +267,5 @@ tr.exrow > td {
   .pill { padding: 1px 6px; font-size: 10px; }
   .duo, .mono, .ping { font-size: 11px; }
   .gauge { width: 28px; height: 28px; }
-  .ring-val { font-size: 8.5px; }
+  .ring-val { font-size: 9px; }
 }
