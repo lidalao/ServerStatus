@@ -28,6 +28,8 @@ services:
     build:
       context: ./service/bot
     restart: unless-stopped
+    depends_on:
+      - srv
     environment:
       - TG_CHAT_ID=tg_chat_id
       - TG_BOT_TOKEN=tg_bot_token

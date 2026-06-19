@@ -1,9 +1,5 @@
 /* Server Status — modern reskin (light / dark / system) */
 
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/jetbrains-mono-400.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/jetbrains-mono-500.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/jetbrains-mono-700.woff2") format("woff2"); }
-
 :root {
   /* light palette (default) */
   --bg-1: #eef2f7;
@@ -29,8 +25,8 @@
   --radius: 14px;
 
   --scanline: rgba(0, 0, 0, .04);
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Courier New", monospace;
-  --sans: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  --mono: Consolas, "SF Mono", Menlo, Monaco, "Liberation Mono", ui-monospace, monospace;
+  --sans: Consolas, "SF Mono", Menlo, Monaco, "Liberation Mono", ui-monospace, monospace;
 }
 
 html[data-theme="dark"] {
@@ -129,7 +125,20 @@ body {
   box-shadow: var(--shadow);
   overflow-x: auto;
 }
-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+table { width: 100%; min-width: 1180px; border-collapse: collapse; white-space: nowrap; table-layout: fixed; }
+
+/* 固定列宽(table-layout:fixed): 某列数值长度变化不再撑动整行布局 */
+.c-proto   { width: 108px; }
+.c-month   { width: 112px; }
+.c-name    { width: 132px; }
+.c-type    { width: 78px; }
+.c-region  { width: 96px; }
+.c-uptime  { width: 86px; }
+.c-load    { width: 64px; }
+.c-net     { width: 120px; }
+.c-traffic { width: 118px; }
+.c-gauge   { width: 92px; }
+.c-ping    { width: 74px; }
 
 thead th {
   position: sticky; top: 0;
@@ -150,6 +159,9 @@ tbody td {
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
+/* 固定列宽下, 超长内容裁切而非撑破 */
+thead th, tbody td { overflow: hidden; text-overflow: ellipsis; }
+tr.exrow > td { overflow: visible; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr.row:hover { background: var(--row-hover); }
 tbody tr.offline { opacity: .5; }
@@ -232,6 +244,7 @@ tr.exrow > td {
 /* ---------- responsive: 移动端只保留主要信息并缩小(参考 mobile.png) ---------- */
 /* 中屏: 隐藏 MONTHLY(2) TRAFFIC(9) CU/CT/CM(13-15) */
 @media (max-width: 920px) {
+  #grid { min-width: 0; }   /* 列减少后铺满即可, 不再强制横向滚动 */
   #grid th:nth-child(2),  #grid td:nth-child(2),
   #grid th:nth-child(9),  #grid td:nth-child(9),
   #grid th:nth-child(13), #grid td:nth-child(13),
@@ -239,11 +252,12 @@ tr.exrow > td {
   #grid th:nth-child(15), #grid td:nth-child(15) { display: none; }
   .topbar, .wrap { padding-left: 14px; padding-right: 14px; }
 }
-/* 窄屏(手机): 再隐藏 TYPE(4) REGION(5) UPTIME(6), 仅留 协议/节点/负载/网络/CPU/内存/硬盘 */
+/* 窄屏(手机): 再隐藏 TYPE(4) REGION(5) UPTIME(6) NETWORK(8), 仅留 协议/节点/负载/CPU/内存/硬盘, 网络下放到详情 */
 @media (max-width: 640px) {
   #grid th:nth-child(4), #grid td:nth-child(4),
   #grid th:nth-child(5), #grid td:nth-child(5),
-  #grid th:nth-child(6), #grid td:nth-child(6) { display: none; }
+  #grid th:nth-child(6), #grid td:nth-child(6),
+  #grid th:nth-child(8), #grid td:nth-child(8) { display: none; }
   body { font-size: 11px; }
   .topbar { padding: 12px 10px; gap: 10px; }
   .brand h1 { font-size: 15px; }

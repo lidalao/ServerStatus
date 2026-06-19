@@ -92,12 +92,28 @@
       '<span class="region-code">' + esc(loc) + '</span></span>';
   }
 
+  function gaugeClass(v) { return 'gauge ' + (v >= 90 ? 'bad' : v >= 70 ? 'warn' : ''); }
   function gauge(kind, val) {
     var v = Math.round(val);
-    var cls = v >= 90 ? 'bad' : v >= 70 ? 'warn' : '';
-    return '<div class="gauge ' + cls + '" data-kind="' + kind + '">' +
+    // 新建时宽度 0 + data-w, 由 flushNewBars() 在下一帧设为目标值 → 从 0 增长
+    return '<div class="' + gaugeClass(v) + '" data-kind="' + kind + '">' +
       '<div class="g-top"><span class="g-val">' + v + '%</span></div>' +
-      '<div class="bar"><i style="width:' + v + '%"></i></div></div>';
+      '<div class="bar"><i class="bar-fill" style="width:0" data-w="' + v + '%"></i></div></div>';
+  }
+  // 就地更新一个进度条单元格: 复用已有 <i> 只改宽度 → 触发 CSS width 过渡动画
+  function updateGauge(td, kind, val, online) {
+    if (!online) {
+      if (td.getAttribute('data-g') !== 'off') { td.innerHTML = '<span class="dim">-</span>'; td.setAttribute('data-g', 'off'); }
+      return;
+    }
+    var v = Math.round(val);
+    var fill = td.querySelector('.bar-fill');
+    if (!fill) { td.innerHTML = gauge(kind, v); td.setAttribute('data-g', 'on'); return; }
+    var g = td.querySelector('.gauge');
+    g.className = gaugeClass(v);
+    g.setAttribute('data-kind', kind);
+    td.querySelector('.g-val').textContent = v + '%';
+    fill.style.width = v + '%';
   }
 
   function pingCell(time, loss, online) {
@@ -108,33 +124,83 @@
   }
 
   /* ----------------- render ----------------- */
-  function row(s) {
+  // 索引 9/10/11 = CPU/RAM/DISK 进度条列(就地更新, 不走 innerHTML)
+  var GAUGE_COL = { 9: 'cpu', 10: 'ram', 11: 'disk' };
+
+  function computeCells(s) {
     var online = !!(s.online4 || s.online6);
     var memPct = pct(s.memory_used, s.memory_total);
     var hddPct = pct(s.hdd_used, s.hdd_total);
     var mIn = (Number(s.network_in) || 0) - (Number(s.last_network_in) || 0);
     var mOut = (Number(s.network_out) || 0) - (Number(s.last_network_out) || 0);
     var load = (Number(s.load_1) === -1) ? '–' : Math.max(0, Number(s.load_1) || 0).toFixed(2);
+    var cpuVal = Math.max(0, Number(s.cpu) || 0);
+    return {
+      online: online, cpu: cpuVal, mem: memPct, hdd: hddPct,
+      cells: [
+        protocolCell(s, online),
+        duo(mIn, mOut, humanBytes),
+        '<span class="name">' + esc(s.name || '-') + '</span>',
+        '<span class="type-tag">' + esc(s.type || '-') + '</span>',
+        regionCell(s.location),
+        '<span class="mono dim">' + esc(fmtUptime(s.uptime)) + '</span>',
+        '<span class="mono">' + load + '</span>',
+        online ? duo(s.network_rx, s.network_tx, humanSpeed) : '<span class="dim">-</span>',
+        duo(s.network_in, s.network_out, humanBytes),
+        online ? gauge('cpu', cpuVal) : '<span class="dim">-</span>',
+        online ? gauge('ram', memPct) : '<span class="dim">-</span>',
+        online ? gauge('disk', hddPct) : '<span class="dim">-</span>',
+        pingCell(s.time_10010, s.ping_10010, online),
+        pingCell(s.time_189, s.ping_189, online),
+        pingCell(s.time_10086, s.ping_10086, online)
+      ]
+    };
+  }
 
-    var cells = [
-      protocolCell(s, online),
-      duo(mIn, mOut, humanBytes),
-      '<span class="name">' + esc(s.name || '-') + '</span>',
-      '<span class="type-tag">' + esc(s.type || '-') + '</span>',
-      regionCell(s.location),
-      '<span class="mono dim">' + esc(fmtUptime(s.uptime)) + '</span>',
-      '<span class="mono">' + load + '</span>',
-      online ? duo(s.network_rx, s.network_tx, humanSpeed) : '<span class="dim">-</span>',
-      duo(s.network_in, s.network_out, humanBytes),
-      online ? gauge('cpu', Math.max(0, Number(s.cpu) || 0)) : '<span class="dim">-</span>',
-      online ? gauge('ram', memPct) : '<span class="dim">-</span>',
-      online ? gauge('disk', hddPct) : '<span class="dim">-</span>',
-      pingCell(s.time_10010, s.ping_10010, online),
-      pingCell(s.time_189, s.ping_189, online),
-      pingCell(s.time_10086, s.ping_10086, online)
-    ];
+  function row(s) {
+    var c = computeCells(s);
+    return '<tr class="row' + (c.online ? '' : ' offline') + '" data-name="' + esc(s.name || '') + '"><td>' +
+      c.cells.join('</td><td>') + '</td></tr>';
+  }
 
-    return '<tr class="row' + (online ? '' : ' offline') + '" data-name="' + esc(s.name || '') + '"><td>' + cells.join('</td><td>') + '</td></tr>';
+  // 节点集合(名字与顺序)是否与当前 DOM 一致 → 决定整建 or 就地更新
+  function sameRowSet(servers) {
+    var rows = document.querySelectorAll('#rows tr.row[data-name]');
+    if (rows.length !== servers.length) return false;
+    for (var i = 0; i < servers.length; i++) {
+      if ((servers[i].name || '') !== rows[i].getAttribute('data-name')) return false;
+    }
+    return true;
+  }
+
+  // 就地更新: 非进度条单元格直接换内容, 进度条复用元素改宽度(动画)
+  function updateRows(servers) {
+    var rowsEl = document.getElementById('rows');
+    var rows = rowsEl.querySelectorAll('tr.row[data-name]');
+    var map = {};
+    for (var i = 0; i < rows.length; i++) map[rows[i].getAttribute('data-name')] = rows[i];
+    for (var k = 0; k < servers.length; k++) {
+      var s = servers[k], tr = map[s.name || ''];
+      if (!tr) continue;
+      var c = computeCells(s), gv = { 9: c.cpu, 10: c.mem, 11: c.hdd };
+      tr.classList.toggle('offline', !c.online);
+      var tds = tr.children;
+      for (var t = 0; t < tds.length && t < 15; t++) {
+        if (GAUGE_COL[t]) updateGauge(tds[t], GAUGE_COL[t], gv[t], c.online);
+        else tds[t].innerHTML = c.cells[t];
+      }
+      var ex = tr.nextElementSibling;
+      if (ex && ex.classList && ex.classList.contains('exrow')) ex.firstElementChild.innerHTML = detailHTML(s);
+    }
+  }
+
+  // 新建的进度条下一帧从 0 设到目标宽度, 触发 CSS 过渡(初次加载/上线时的增长动画)
+  function flushNewBars() {
+    var bars = document.querySelectorAll('#rows i.bar-fill[data-w]');
+    for (var i = 0; i < bars.length; i++) {
+      bars[i].style.width = bars[i].getAttribute('data-w');
+      bars[i].removeAttribute('data-w');
+    }
   }
 
   function render(j) {
@@ -143,6 +209,8 @@
     var rowsEl = document.getElementById('rows');
     if (!servers.length) {
       rowsEl.innerHTML = '<tr class="empty"><td colspan="15">No nodes yet</td></tr>';
+    } else if (sameRowSet(servers)) {
+      updateRows(servers);                 // 同一批节点: 就地更新, 进度条平滑过渡
     } else {
       rowsEl.innerHTML = servers.map(function (s) { return row(s) + exrow(s); }).join('');
     }
@@ -158,6 +226,7 @@
     }
 
     applyExpanded();
+    requestAnimationFrame(flushNewBars);
   }
 
   function tick() {
@@ -182,6 +251,7 @@
     var KB = 1024, MB = 1048576;
     var io = humanSpeed(s.io_read) + ' / ' + humanSpeed(s.io_write);
     return '<div class="exwrap">'
+      + seg('Network ↓|↑', humanSpeed(s.network_rx) + ' / ' + humanSpeed(s.network_tx))
       + seg('Memory|Swap', humanBytes((Number(s.memory_used) || 0) * KB) + ' / ' + humanBytes((Number(s.memory_total) || 0) * KB) + ' | ' + humanBytes((Number(s.swap_used) || 0) * KB) + ' / ' + humanBytes((Number(s.swap_total) || 0) * KB))
       + seg('Disk|IO', humanBytes((Number(s.hdd_used) || 0) * MB) + ' / ' + humanBytes((Number(s.hdd_total) || 0) * MB) + ' | ' + io)
       + seg('TCP/UDP/Proc/Thread', (Number(s.tcp_count) || 0) + ' / ' + (Number(s.udp_count) || 0) + ' / ' + (Number(s.process_count) || 0) + ' / ' + (Number(s.thread_count) || 0))

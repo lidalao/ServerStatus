@@ -10,7 +10,7 @@ import requests
 import time
 import traceback
 
-NODE_STATUS_URL = 'http://sss/json/stats.json'
+NODE_STATUS_URL = 'http://srv/json/stats.json'
 
 offs = []
 counterOff = {}
@@ -54,11 +54,13 @@ def send2tg(srv, flag):
 
 def sscmd(address):
     while True:
-        r = requests.get(url=address, headers={"User-Agent": "ServerStatus/20211116"})
         try:
+            r = requests.get(url=address, headers={"User-Agent": "ServerStatus/20211116"})
             jsonR = r.json()
         except Exception as e:
+            # srv 尚未就绪 / 暂时无数据, 稍后重试, 不让进程崩溃
             print('未发现任何节点')
+            time.sleep(3)
             continue
         for i in jsonR["servers"]:
             if i["online4"] is False and i["online6"] is False:
