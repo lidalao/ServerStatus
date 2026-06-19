@@ -1,5 +1,9 @@
 /* Server Status — modern reskin (light / dark / system) */
 
+@font-face { font-family: "Cascadia Code"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/cascadia-code-400.woff2") format("woff2"); }
+@font-face { font-family: "Cascadia Code"; font-style: normal; font-weight: 600; font-display: swap; src: url("../fonts/cascadia-code-600.woff2") format("woff2"); }
+@font-face { font-family: "Cascadia Code"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/cascadia-code-700.woff2") format("woff2"); }
+
 :root {
   /* light palette (default) */
   --bg-1: #eef2f7;
@@ -25,8 +29,8 @@
   --radius: 14px;
 
   --scanline: rgba(0, 0, 0, .04);
-  --mono: Consolas, "SF Mono", Menlo, Monaco, "Liberation Mono", ui-monospace, monospace;
-  --sans: Consolas, "SF Mono", Menlo, Monaco, "Liberation Mono", ui-monospace, monospace;
+  --mono: "Cascadia Code", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", ui-monospace, monospace;
+  --sans: "Cascadia Code", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", ui-monospace, monospace;
 }
 
 html[data-theme="dark"] {
@@ -125,18 +129,18 @@ body {
   box-shadow: var(--shadow);
   overflow-x: auto;
 }
-table { width: 100%; min-width: 1180px; border-collapse: collapse; white-space: nowrap; table-layout: fixed; }
+table { width: 100%; min-width: 1440px; border-collapse: collapse; white-space: nowrap; table-layout: fixed; }
 
-/* 固定列宽(table-layout:fixed): 某列数值长度变化不再撑动整行布局 */
+/* 固定列宽(table-layout:fixed): 数值长度变化不再撑动布局; 宽度按"列名+内容"留足, 不裁切 */
 .c-proto   { width: 108px; }
-.c-month   { width: 112px; }
+.c-month   { width: 118px; }
 .c-name    { width: 132px; }
-.c-type    { width: 78px; }
+.c-type    { width: 76px; }
 .c-region  { width: 96px; }
 .c-uptime  { width: 86px; }
 .c-load    { width: 64px; }
-.c-net     { width: 120px; }
-.c-traffic { width: 118px; }
+.c-net     { width: 142px; }
+.c-traffic { width: 120px; }
 .c-gauge   { width: 92px; }
 .c-ping    { width: 74px; }
 

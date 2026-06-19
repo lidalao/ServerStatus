@@ -131,8 +131,8 @@ install_dashboard() {
     wget --no-check-certificate -qO service/web/favicon.svg   ${GITHUB_RAW_URL}/service/web/favicon.svg
     wget --no-check-certificate -qO service/web/css/app.css   ${GITHUB_RAW_URL}/service/web/css/app.css
     wget --no-check-certificate -qO service/web/js/app.js     ${GITHUB_RAW_URL}/service/web/js/app.js
-    for w in 400 500 700; do
-        wget --no-check-certificate -qO service/web/fonts/jetbrains-mono-$w.woff2 ${GITHUB_RAW_URL}/service/web/fonts/jetbrains-mono-$w.woff2
+    for w in 400 600 700; do
+        wget --no-check-certificate -qO service/web/fonts/cascadia-code-$w.woff2 ${GITHUB_RAW_URL}/service/web/fonts/cascadia-code-$w.woff2
     done
 
     [ -f "$CONFIG_FILE" ] || echo '{"servers":[]}' > "$CONFIG_FILE"
