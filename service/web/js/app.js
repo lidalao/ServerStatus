@@ -87,38 +87,39 @@
 
   function regionCell(loc) {
     if (!loc) return '<span class="dim">-</span>';
-    var f = flag(loc);
-    return '<span class="region">' + (f ? '<span class="flag">' + f + '</span>' : '') +
-      '<span class="region-code">' + esc(loc) + '</span></span>';
+    return '<span class="region"><span class="region-code">' + esc(loc) + '</span></span>';
   }
 
   function gaugeClass(v) { return 'gauge ' + (v >= 90 ? 'bad' : v >= 70 ? 'warn' : ''); }
   function gauge(kind, val) {
     var v = Math.round(val);
-    // 新建时宽度 0 + data-w, 由 flushNewBars() 在下一帧设为目标值 → 从 0 增长
+    // 环形进度条: pathLength=100 → dashoffset 用百分比. 新建时 offset=100(空环)+ data-off,
+    // 由 flushNewBars() 在下一帧设为目标 → 环形增长动画
     return '<div class="' + gaugeClass(v) + '" data-kind="' + kind + '">' +
-      '<div class="g-top"><span class="g-val">' + v + '%</span></div>' +
-      '<div class="bar"><i class="bar-fill" style="width:0" data-w="' + v + '%"></i></div></div>';
+      '<svg class="ring" viewBox="0 0 36 36" aria-hidden="true">' +
+        '<circle class="ring-track" cx="18" cy="18" r="15.5"></circle>' +
+        '<circle class="ring-fill" cx="18" cy="18" r="15.5" pathLength="100" style="stroke-dashoffset:100" data-off="' + (100 - v) + '"></circle>' +
+      '</svg><span class="ring-val">' + v + '%</span></div>';
   }
-  // 就地更新一个进度条单元格: 复用已有 <i> 只改宽度 → 触发 CSS width 过渡动画
+  // 就地更新一个环形单元格: 复用已有 <circle> 只改 dashoffset → 触发 CSS 过渡动画
   function updateGauge(td, kind, val, online) {
     if (!online) {
       if (td.getAttribute('data-g') !== 'off') { td.innerHTML = '<span class="dim">-</span>'; td.setAttribute('data-g', 'off'); }
       return;
     }
     var v = Math.round(val);
-    var fill = td.querySelector('.bar-fill');
+    var fill = td.querySelector('.ring-fill');
     if (!fill) { td.innerHTML = gauge(kind, v); td.setAttribute('data-g', 'on'); return; }
     var g = td.querySelector('.gauge');
     g.className = gaugeClass(v);
     g.setAttribute('data-kind', kind);
-    td.querySelector('.g-val').textContent = v + '%';
-    fill.style.width = v + '%';
+    td.querySelector('.ring-val').textContent = v + '%';
+    fill.style.strokeDashoffset = (100 - v);
   }
 
   function pingCell(time, loss, online) {
     time = Number(time); loss = Number(loss);
-    if (!online || isNaN(time) || time < 0) return '<span class="ping"><span class="p-loss dim">-</span></span>';
+    if (!online || isNaN(time) || time < 0) return '<span class="ping"><span class="p-ms dim">-</span></span>';
     if (isNaN(loss) || loss < 0) loss = 0;
     var cls = loss >= 50 ? 'bad' : loss > 0 ? 'mid' : 'good';
     var lossTxt = (loss > 0 && loss < 1) ? loss.toFixed(1) : Math.round(loss);
@@ -198,12 +199,12 @@
     }
   }
 
-  // 新建的进度条下一帧从 0 设到目标宽度, 触发 CSS 过渡(初次加载/上线时的增长动画)
+  // 新建的环形下一帧从空(offset 100)设到目标, 触发 CSS 过渡(初次加载/上线时的增长动画)
   function flushNewBars() {
-    var bars = document.querySelectorAll('#rows i.bar-fill[data-w]');
+    var bars = document.querySelectorAll('#rows .ring-fill[data-off]');
     for (var i = 0; i < bars.length; i++) {
-      bars[i].style.width = bars[i].getAttribute('data-w');
-      bars[i].removeAttribute('data-w');
+      bars[i].style.strokeDashoffset = bars[i].getAttribute('data-off');
+      bars[i].removeAttribute('data-off');
     }
   }
 

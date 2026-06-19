@@ -140,12 +140,12 @@ thead th {
   font-weight: 700;
   letter-spacing: .6px;
   text-align: left;
-  padding: 9px 14px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border-strong);
   z-index: 2;
 }
 tbody td {
-  padding: 7px 14px;
+  padding: 5px 10px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
   line-height: 1.2;
@@ -188,17 +188,25 @@ tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 .mono { font-family: var(--mono); font-size: 12px; }
 .dim { color: var(--text-dim); }
 
-/* thin gauges */
-.gauge { min-width: 78px; }
-.gauge .g-top { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11.5px; margin-bottom: 3px; line-height: 1.1; }
-.gauge .g-val { font-weight: 600; }
-.gauge .bar { height: 5px; border-radius: 999px; background: var(--track); overflow: hidden; }
-.gauge .bar > i { display: block; height: 100%; border-radius: 999px; transition: width .6s cubic-bezier(.4,0,.2,1), background .3s; }
-.gauge[data-kind="cpu"]  .bar > i { background: var(--accent); }
-.gauge[data-kind="ram"]  .bar > i { background: var(--ram); }
-.gauge[data-kind="disk"] .bar > i { background: var(--disk); }
-.gauge.warn .bar > i { background: var(--warn) !important; }
-.gauge.bad  .bar > i { background: var(--bad) !important; }
+/* circular gauges (CPU/RAM/DISK): 环形进度条, 中间显示百分比 */
+.gauge { position: relative; display: inline-block; width: 28px; height: 28px; vertical-align: middle; }
+.gauge .ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-track { fill: none; stroke: var(--track); stroke-width: 3.5; }
+.ring-fill {
+  fill: none; stroke-width: 3.5; stroke-linecap: round;
+  stroke-dasharray: 100;
+  transition: stroke-dashoffset .6s cubic-bezier(.4,0,.2,1), stroke .3s;
+}
+.gauge[data-kind="cpu"]  .ring-fill { stroke: var(--accent); }
+.gauge[data-kind="ram"]  .ring-fill { stroke: var(--ram); }
+.gauge[data-kind="disk"] .ring-fill { stroke: var(--disk); }
+.gauge.warn .ring-fill { stroke: var(--warn) !important; }
+.gauge.bad  .ring-fill { stroke: var(--bad)  !important; }
+.ring-val {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 9px; font-weight: 600; color: var(--text);
+}
 
 /* ping cells: 丢包率(主, 配色) + 延迟(次, 暗) 双行, 不点详情即可见丢包 */
 .ping { font-family: var(--mono); font-size: 12px; display: inline-flex; flex-direction: column; line-height: 1.1; }
@@ -257,6 +265,6 @@ tr.exrow > td {
   tbody td { padding: 9px 7px; }
   .pill { padding: 1px 6px; font-size: 10px; }
   .duo, .mono, .ping { font-size: 11px; }
-  .gauge { min-width: 46px; }
-  .gauge .g-top { font-size: 10px; margin-bottom: 4px; }
+  .gauge { width: 28px; height: 28px; }
+  .ring-val { font-size: 8.5px; }
 }
