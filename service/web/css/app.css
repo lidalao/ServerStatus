@@ -151,6 +151,7 @@ tbody td {
   line-height: 1.2;
 }
 tbody tr:last-child td { border-bottom: 0; }
+tbody tr.row.alt { background: var(--surface-alt); }   /* 隔行浅色底, 防看错行 */
 tbody tr.row:hover { background: var(--row-hover); }
 tbody tr.offline { opacity: .5; }
 tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
