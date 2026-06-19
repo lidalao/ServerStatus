@@ -1,56 +1,57 @@
 /* Server Status — modern reskin (light / dark / system) */
 
 :root {
-  /* light palette (default) */
-  --bg-1: #eef2f7;
-  --bg-2: #e4eaf2;
-  --surface: #ffffff;
-  --surface-alt: #f7f9fc;
-  --border: #e6eaf1;
-  --border-strong: #d6dce6;
-  --text: #0f1720;
-  --text-dim: #5b6675;
-  --text-faint: #99a2b1;
-  --accent: #6366f1;
-  --ok: #22c55e;
-  --warn: #f59e0b;
-  --bad: #ef4444;
-  --down: #10b981;
-  --up: #6366f1;
-  --ram: #8b5cf6;
-  --disk: #06b6d4;
-  --track: #eceef3;
-  --row-hover: #f5f7fb;
-  --shadow: 0 6px 24px -10px rgba(31, 39, 51, .25);
-  --radius: 14px;
+  /* light palette — 照搬 tz.huilang.me 的 body.light: 统一暖米白底, 终端等宽, 低对比护眼 */
+  --bg-1: #f5f5f0;
+  --bg-2: #f5f5f0;
+  --surface: rgba(232, 232, 224, .6);   /* item 底 = huilang --bg-secondary(半透, 透出扫描线) */
+  --surface-alt: rgba(250, 250, 245, .6); /* 表头/胶囊 = huilang --bg-card */
+  --border: #d4d4c8;
+  --border-strong: #b8b8a8;
+  --text: #2c2c2c;
+  --text-dim: #5c5c5c;
+  --text-faint: #8c8c80;
+  --accent: #2563eb;
+  --ok: #1a7f5a;
+  --warn: #d97706;
+  --bad: #dc2626;
+  --down: #5c5c5c;          /* 数字统一灰, 不双色 */
+  --up: #5c5c5c;
+  --ram: #7c3aed;
+  --disk: #0d9488;
+  --track: #e2e2d6;
+  --row-hover: rgba(240, 240, 232, .6);   /* hover = huilang --bg-hover */
+  --shadow: none;
+  --radius: 4px;
 
-  --scanline: rgba(0, 0, 0, .04);
-  --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --scanline: rgba(0, 0, 0, .015);
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --sans: var(--mono);      /* 全站等宽终端风(照搬 huilang) */
 }
 
 html[data-theme="dark"] {
-  --bg-1: #0e1116;
-  --bg-2: #11151c;
-  --surface: #161b22;
-  --surface-alt: #1b212b;
-  --border: #232a35;
-  --border-strong: #2c3543;
-  --text: #e6edf3;
-  --text-dim: #8b95a4;
-  --text-faint: #5e6675;
-  --accent: #818cf8;
-  --ok: #34d399;
-  --warn: #fbbf24;
-  --bad: #f87171;
-  --down: #34d399;
-  --up: #818cf8;
-  --ram: #a78bfa;
-  --disk: #22d3ee;
-  --track: #232a35;
-  --row-hover: #1b212b;
-  --scanline: rgba(255, 255, 255, .045);
-  --shadow: 0 8px 30px -12px rgba(0, 0, 0, .6);
+  /* 照搬 huilang 的 :root(dark) */
+  --bg-1: #0a0e14;
+  --bg-2: #0a0e14;
+  --surface: rgba(18, 23, 31, .6);    /* huilang --bg-secondary */
+  --surface-alt: rgba(21, 27, 38, .6);  /* huilang --bg-card */
+  --border: #1e2a3a;
+  --border-strong: #2a3a4f;
+  --text: #d3dae3;
+  --text-dim: #8999af;
+  --text-faint: #6b7689;
+  --accent: #4da6ff;
+  --ok: #00d4aa;
+  --warn: #ffb870;
+  --bad: #f85149;
+  --down: #8999af;
+  --up: #8999af;
+  --ram: #b392f0;
+  --disk: #39d2c0;
+  --track: #1e2a3a;
+  --row-hover: rgba(26, 34, 48, .6);   /* huilang --bg-hover */
+  --scanline: rgba(0, 0, 0, .03);
+  --shadow: none;
 }
 
 * { box-sizing: border-box; }
@@ -62,10 +63,19 @@ body {
   font-family: var(--sans);
   font-size: 13px;
   color: var(--text);
-  background: linear-gradient(160deg, var(--bg-1), var(--bg-2));
-  background-attachment: fixed;
+  background: var(--bg-1);   /* 统一暖米白底铺满整页 */
   -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
+}
+
+/* 整页 CRT 扫描线条纹(照搬 huilang 的 body::before): 覆盖整个视口, 不挡点击 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scanline) 2px, var(--scanline) 4px);
+  pointer-events: none;
+  z-index: 9999;
 }
 
 /* ---------- top bar ---------- */
@@ -122,7 +132,6 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
   overflow-x: auto;
 }
 table { width: 100%; border-collapse: collapse; white-space: nowrap; }
@@ -132,12 +141,10 @@ table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 
 thead th {
   position: sticky; top: 0;
-  background:
-    repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scanline) 2px, var(--scanline) 4px),
-    var(--surface);
-  color: var(--text);
+  background: var(--surface-alt);
+  color: var(--text-dim);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: .6px;
   text-align: left;
   padding: 7px 10px;
@@ -151,12 +158,12 @@ tbody td {
   line-height: 1.2;
 }
 tbody tr:last-child td { border-bottom: 0; }
-tbody tr.row.alt { background: var(--surface-alt); }   /* 隔行浅色底, 防看错行 */
+/* huilang 风格: 不做隔行变色; 条纹是整页 CRT 扫描线(见 body::before) */
 tbody tr.row:hover { background: var(--row-hover); }
 tbody tr.offline { opacity: .5; }
 tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 
-.c-name td, td.name { font-weight: 600; }
+.name { font-weight: 500; color: var(--text); }
 .c-gauge, .c-ping { text-align: left; }
 
 /* protocol pill + status dot */
@@ -165,14 +172,14 @@ tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 .dot.on  { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
 .dot.off { background: var(--text-faint); }
 .pill {
-  font-size: 11px; font-weight: 600;
+  font-size: 11px; font-weight: 500;
   padding: 2px 8px; border-radius: 999px;
   background: var(--surface-alt);
   border: 1px solid var(--border);
   color: var(--text-dim);
 }
-.pill.dual { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
-.pill.off  { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, var(--border)); }
+.pill.dual { color: var(--text-dim); }
+.pill.off  { color: var(--text-faint); }
 
 /* region */
 .region { display: inline-flex; align-items: center; gap: 7px; }
@@ -213,7 +220,7 @@ tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 .ping { font-family: var(--mono); font-size: 12px; display: inline-flex; flex-direction: column; line-height: 1.1; }
 .ping .p-loss { font-weight: 600; color: var(--text-dim); }
 .ping .p-ms { color: var(--text-faint); font-size: 10.5px; }
-.ping.good .p-loss { color: var(--ok); }
+.ping.good .p-loss { color: var(--text-dim); }   /* 0 丢包: 统一灰, 不抢眼 */
 .ping.mid  .p-loss { color: var(--warn); }
 .ping.bad  .p-loss { color: var(--bad); }
 

@@ -200,12 +200,6 @@
   }
 
   // 新建的环形下一帧从空(offset 100)设到目标, 触发 CSS 过渡(初次加载/上线时的增长动画)
-  // 隔行浅色背景: 每个节点占「主行+详情行」一对, 故按 .row 顺序(非 DOM 子序)打 alt
-  function applyStripes() {
-    var rows = document.querySelectorAll('#rows tr.row');
-    for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('alt', i % 2 === 1);
-  }
-
   function flushNewBars() {
     var bars = document.querySelectorAll('#rows .ring-fill[data-off]');
     for (var i = 0; i < bars.length; i++) {
@@ -236,7 +230,6 @@
       document.getElementById('updated').textContent = 'Updated ' + d.toLocaleTimeString();
     }
 
-    applyStripes();
     applyExpanded();
     requestAnimationFrame(flushNewBars);
   }
