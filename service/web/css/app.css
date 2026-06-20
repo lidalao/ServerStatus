@@ -143,6 +143,11 @@ table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 /* 关键: table-layout:auto 下列宽取自最宽「单元格内容」, 表头 width 只是建议值;
    故把网络单元格内容裹进固定宽度盒子, 让其固有宽度恒定, 速率怎么变都不撑动整表 */
 .netbox { display: inline-block; width: 122px; overflow: hidden; }
+/* MONTHLY / TRAFFIC: 累计流量数值也会随位数增减改变宽度, 同样钉死 */
+.numbox { display: inline-block; width: 96px; overflow: hidden; }
+/* UPTIME / LOAD: 时长与负载位数也会变, 钉死防抖 */
+.upbox   { display: inline-block; width: 62px; overflow: hidden; }
+.loadbox { display: inline-block; width: 44px; overflow: hidden; }
 
 thead th {
   position: sticky; top: 0;
@@ -222,7 +227,8 @@ tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 }
 
 /* ping cells: 丢包率(主, 配色) + 延迟(次, 暗) 双行, 不点详情即可见丢包 */
-.ping { font-family: var(--mono); font-size: 12px; display: inline-flex; flex-direction: column; line-height: 1.1; }
+/* CU/CT/CM: 延迟 ms 位数会变(12ms↔123ms), 固定宽度防止整表回流 */
+.ping { font-family: var(--mono); font-size: 12px; display: inline-flex; flex-direction: column; line-height: 1.1; width: 52px; overflow: hidden; }
 .ping .p-loss { font-weight: 600; color: var(--text-dim); }
 .ping .p-ms { color: var(--text-faint); font-size: 10.5px; }
 .ping.good .p-loss { color: var(--text-dim); }   /* 0 丢包: 统一灰, 不抢眼 */
