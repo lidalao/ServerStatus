@@ -139,7 +139,10 @@ body::before {
 table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 
 /* 自动列宽: 各列按内容自适应; 唯独 NETWORK(实时速率)数值频繁变化, 固定其宽度防止整表抖动 */
-.c-net { width: 150px; min-width: 150px; }
+.c-net { width: 130px; min-width: 130px; }
+/* 关键: table-layout:auto 下列宽取自最宽「单元格内容」, 表头 width 只是建议值;
+   故把网络单元格内容裹进固定宽度盒子, 让其固有宽度恒定, 速率怎么变都不撑动整表 */
+.netbox { display: inline-block; width: 122px; overflow: hidden; }
 
 thead th {
   position: sticky; top: 0;

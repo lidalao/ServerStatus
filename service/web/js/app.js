@@ -150,7 +150,7 @@
         regionCell(s.location),
         '<span class="mono dim">' + esc(fmtUptime(s.uptime)) + '</span>',
         '<span class="mono">' + load + '</span>',
-        online ? duo(s.network_rx, s.network_tx, humanSpeed) : '<span class="dim">-</span>',
+        '<span class="netbox">' + (online ? duo(s.network_rx, s.network_tx, humanSpeed) : '<span class="dim">-</span>') + '</span>',
         duo(s.network_in, s.network_out, humanBytes),
         online ? gauge('cpu', cpuVal) : '<span class="dim">-</span>',
         online ? gauge('ram', memPct) : '<span class="dim">-</span>',
