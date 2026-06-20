@@ -1,4 +1,6 @@
 /* Server Status — modern reskin (light / dark / system) */
+/* JetBrains Mono 终端等宽字体(照搬 huilang); 拉不到时回退系统等宽 */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
 :root {
   /* light palette — 照搬 tz.huilang.me 的 body.light: 统一暖米白底, 终端等宽, 低对比护眼 */
@@ -144,10 +146,10 @@ thead th {
   background: var(--surface-alt);
   color: var(--text-dim);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: .6px;
   text-align: left;
-  padding: 7px 10px;
+  padding: 12px 10px;
   border-bottom: 1px solid var(--border-strong);
   z-index: 2;
 }
@@ -248,10 +250,10 @@ tr.exrow > td {
 .exseg b { color: var(--text-faint); font-weight: 700; margin-right: 8px; }
 
 /* ---------- responsive: 移动端只保留主要信息并缩小(参考 mobile.png) ---------- */
-/* 中屏: 隐藏 MONTHLY(2) TRAFFIC(9) CU/CT/CM(13-15) */
+/* 中屏: 隐藏 MONTHLY(3) TRAFFIC(9) CU/CT/CM(13-15) */
 @media (max-width: 920px) {
   #grid { min-width: 0; }   /* 列减少后铺满即可, 不再强制横向滚动 */
-  #grid th:nth-child(2),  #grid td:nth-child(2),
+  #grid th:nth-child(3),  #grid td:nth-child(3),
   #grid th:nth-child(9),  #grid td:nth-child(9),
   #grid th:nth-child(13), #grid td:nth-child(13),
   #grid th:nth-child(14), #grid td:nth-child(14),

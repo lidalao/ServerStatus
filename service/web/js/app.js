@@ -143,9 +143,9 @@
     return {
       online: online, cpu: cpuVal, mem: memPct, hdd: hddPct,
       cells: [
+        '<span class="name">' + esc(s.name || '-') + '</span>',
         protocolCell(s, online),
         duo(mIn, mOut, humanBytes),
-        '<span class="name">' + esc(s.name || '-') + '</span>',
         '<span class="type-tag">' + esc(s.type || '-') + '</span>',
         regionCell(s.location),
         '<span class="mono dim">' + esc(fmtUptime(s.uptime)) + '</span>',
