@@ -85,11 +85,16 @@
       '<span class="sep">|</span><span class="out">' + fmt(outVal) + '</span></span>';
   }
 
+  // 矢量箭头(照搬 seaya 的 lucide 图标, 比 Unicode ↑↓ 锐利): 描边圆角
+  var SVG0 = '<svg class="ar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">';
+  var ARROW_UP   = SVG0 + '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>';
+  var ARROW_DOWN = SVG0 + '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>';
+
   // 上下两行: ↑上传(out) 在上, ↓下载(in) 在下 (与 CU/CT/CM 同款堆叠)
   function vduo(inVal, outVal, fmt) {
     return '<span class="duo2">' +
-      '<span class="up"><span class="ar">↑</span>' + fmt(outVal) + '</span>' +
-      '<span class="down"><span class="ar">↓</span>' + fmt(inVal) + '</span></span>';
+      '<span class="up">' + ARROW_UP + fmt(outVal) + '</span>' +
+      '<span class="down">' + ARROW_DOWN + fmt(inVal) + '</span></span>';
   }
 
   function regionCell(loc) {

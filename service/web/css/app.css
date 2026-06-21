@@ -1,6 +1,6 @@
 /* Server Status — modern reskin (light / dark / system) */
-/* JetBrains Mono 终端等宽字体(照搬 huilang); 拉不到时回退系统等宽 */
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+/* 字体照搬 monitor.seaya.link: 不加载任何 web 字体, 全用系统字体栈
+   (UI/正文用 system sans, 数值/代码用 system mono) */
 
 :root {
   /* light palette — 照搬 tz.huilang.me 的 body.light: 统一暖米白底, 终端等宽, 低对比护眼 */
@@ -27,8 +27,9 @@
   --radius: 4px;
 
   --scanline: rgba(0, 0, 0, .015);
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  --sans: var(--mono);      /* 全站等宽终端风(照搬 huilang) */
+  /* 照搬 seaya: system sans(UI) + system mono(数值/代码), 无 web 字体 */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Open Sans", system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 html[data-theme="dark"] {
@@ -206,9 +207,10 @@ tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 
 /* MONTHLY/NETWORK/TRAFFIC: 上下两行 ↑上传 / ↓下载 (与 CU/CT/CM 同款堆叠) */
 .duo2 { font-family: var(--mono); font-size: 12px; display: inline-flex; flex-direction: column; line-height: 1.15; }
-.duo2 .up   { color: var(--up); }
-.duo2 .down { color: var(--down); }
-.duo2 .ar   { color: var(--text-faint); margin-right: 3px; }
+.duo2 .up   { color: var(--up); display: inline-flex; align-items: center; }
+.duo2 .down { color: var(--down); display: inline-flex; align-items: center; }
+/* 矢量箭头: 跟随当前文字色(currentColor), 比 Unicode ↑↓ 锐利清晰 */
+.duo2 .ar   { width: 11px; height: 11px; margin-right: 3px; flex: none; }
 .mono { font-family: var(--mono); font-size: 12px; }
 .dim { color: var(--text-dim); }
 
