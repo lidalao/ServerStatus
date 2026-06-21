@@ -217,6 +217,11 @@
 
   function render(j) {
     var servers = (j && j.servers) || [];
+    // 上游 stats.json 的节点顺序不保证稳定; 固定按 name 排序。否则顺序一变,
+    // sameRowSet 即为 false → 整表 innerHTML 重建 → 行上下跳 + 仪表重新动画(整表抖动)。
+    servers = servers.slice().sort(function (a, b) {
+      return String(a && a.name || '').localeCompare(String(b && b.name || ''));
+    });
     S.servers = servers;
     var rowsEl = document.getElementById('rows');
     if (!servers.length) {
