@@ -139,12 +139,12 @@ body::before {
 table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 
 /* 自动列宽: 各列按内容自适应; 唯独 NETWORK(实时速率)数值频繁变化, 固定其宽度防止整表抖动 */
-.c-net { width: 130px; min-width: 130px; }
+.c-net { width: 72px; min-width: 72px; }
 /* 关键: table-layout:auto 下列宽取自最宽「单元格内容」, 表头 width 只是建议值;
    故把网络单元格内容裹进固定宽度盒子, 让其固有宽度恒定, 速率怎么变都不撑动整表 */
-.netbox { display: inline-block; width: 122px; overflow: hidden; }
+.netbox { display: inline-block; width: 70px; overflow: hidden; }
 /* MONTHLY / TRAFFIC: 累计流量数值也会随位数增减改变宽度, 同样钉死 */
-.numbox { display: inline-block; width: 96px; overflow: hidden; }
+.numbox { display: inline-block; width: 58px; overflow: hidden; }
 /* UPTIME / LOAD: 时长与负载位数也会变, 钉死防抖 */
 .upbox   { display: inline-block; width: 62px; overflow: hidden; }
 .loadbox { display: inline-block; width: 44px; overflow: hidden; }
@@ -203,6 +203,12 @@ tr.empty td { text-align: center; color: var(--text-dim); padding: 40px; }
 .duo .in  { color: var(--down); }
 .duo .sep { color: var(--text-faint); }
 .duo .out { color: var(--up); }
+
+/* MONTHLY/NETWORK/TRAFFIC: 上下两行 ↑上传 / ↓下载 (与 CU/CT/CM 同款堆叠) */
+.duo2 { font-family: var(--mono); font-size: 12px; display: inline-flex; flex-direction: column; line-height: 1.15; }
+.duo2 .up   { color: var(--up); }
+.duo2 .down { color: var(--down); }
+.duo2 .ar   { color: var(--text-faint); margin-right: 3px; }
 .mono { font-family: var(--mono); font-size: 12px; }
 .dim { color: var(--text-dim); }
 

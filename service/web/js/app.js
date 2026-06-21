@@ -85,6 +85,13 @@
       '<span class="sep">|</span><span class="out">' + fmt(outVal) + '</span></span>';
   }
 
+  // 上下两行: ↑上传(out) 在上, ↓下载(in) 在下 (与 CU/CT/CM 同款堆叠)
+  function vduo(inVal, outVal, fmt) {
+    return '<span class="duo2">' +
+      '<span class="up"><span class="ar">↑</span>' + fmt(outVal) + '</span>' +
+      '<span class="down"><span class="ar">↓</span>' + fmt(inVal) + '</span></span>';
+  }
+
   function regionCell(loc) {
     if (!loc) return '<span class="dim">-</span>';
     return '<span class="region"><span class="region-code">' + esc(loc) + '</span></span>';
@@ -145,13 +152,13 @@
       cells: [
         '<span class="name">' + esc(s.name || '-') + '</span>',
         protocolCell(s, online),
-        '<span class="numbox">' + duo(mIn, mOut, humanBytes) + '</span>',
+        '<span class="numbox">' + vduo(mIn, mOut, humanBytes) + '</span>',
         '<span class="type-tag">' + esc(s.type || '-') + '</span>',
         regionCell(s.location),
         '<span class="mono dim upbox">' + esc(fmtUptime(s.uptime)) + '</span>',
         '<span class="mono loadbox">' + load + '</span>',
-        '<span class="netbox">' + (online ? duo(s.network_rx, s.network_tx, humanSpeed) : '<span class="dim">-</span>') + '</span>',
-        '<span class="numbox">' + duo(s.network_in, s.network_out, humanBytes) + '</span>',
+        '<span class="netbox">' + (online ? vduo(s.network_rx, s.network_tx, humanSpeed) : '<span class="dim">-</span>') + '</span>',
+        '<span class="numbox">' + vduo(s.network_in, s.network_out, humanBytes) + '</span>',
         online ? gauge('cpu', cpuVal) : '<span class="dim">-</span>',
         online ? gauge('ram', memPct) : '<span class="dim">-</span>',
         online ? gauge('disk', hddPct) : '<span class="dim">-</span>',
