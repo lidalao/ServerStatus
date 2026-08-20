@@ -22,7 +22,7 @@ agent/{client-linux.py,sss-agent.sh,sss-agent.service}  # 被监控机器侧
 Three roles communicate through the upstream ServerStatus server, run unmodified as the `cppla/serverstatus:latest` Docker image:
 
 - **Server side (panel host)** — `docker-compose.yml` (project `name: sss`) runs three services, auto-named `sss-srv-1` / `sss-web-1` / `sss-bot-1` (no `container_name`): **`srv`** (upstream `cppla/serverstatus`, TCP report port `35601`) receives agent uploads and writes `json/stats.json`; **`web`** (nginx, frontend baked into the image via `service/web/Dockerfile`) serves the dashboard on `8081` and reads the shared `./json` mounted read-only at the `json/` subpath; **`bot`** (built from `service/bot/`) sends Telegram notifications. `config.json` (`{"servers":[...]}`) is bind-mounted into `srv` and is the single source of truth for which nodes exist. `srv` and `web` share the host `./json` directory — srv writes, web reads.
-- **Node management** — implemented **directly in `sss.sh`** (bash + `jq`); there is no `_sss.py` anymore. The menu (`menu_loop`) does view/add/remove/update against `config.json` via `jq` (atomic temp-file + `mv` writes, `sort_by(.name)`), then `docker-compose restart` to reload. Each added node gets a random `username` (`/proc/sys/kernel/random/uuid`) + `password` (`/dev/urandom`, ≥1 digit/lower/upper); `print_agent_cmd` prints the exact `agent/sss-agent.sh` install command.
+- **Node management** — implemented **directly in `sss.sh`** (bash + `jq`); there is no `_sss.py` anymore. The menu (`menu_loop`) does view/add/remove/update against `config.json` via `jq` (atomic temp-file + `mv` writes, `sort_by(.name)`), then `dc restart` to reload. Menu `1. 查看节点` (`view_node`/`show_node_detail`) prints a node's location/type/monthstart/username/password **and re-prints its agent install command** (blank input = all nodes); `5. 更新面板` runs `git pull` + rebuild then `exec`s itself; any unrecognised input exits (no "press 0 to quit" loop). Each added node gets a random `username` (`/proc/sys/kernel/random/uuid`) + `password` (`/dev/urandom`, ≥1 digit/lower/upper); `print_agent_cmd` prints the exact `agent/sss-agent.sh` install command.
 - **Agent side (monitored machines)** — `agent/client-linux.py` (upstream cppla collector, only modification: `tupd()` stubbed to return zeros) connects to the panel's `35601` and authenticates with the node's USER/PASSWORD, streaming metrics. Installed as a systemd service via `agent/sss-agent.sh`.
 
 `service/bot/bot.py` polls `http://srv/json/stats.json` (the `srv` service hostname on the compose network — auto-named container `sss-srv-1`) every 3s and sends Telegram messages on state changes. **Debounce:** a node must report the same state for 10 consecutive polls (`counterOn`/`counterOff`) before a message fires — suppresses flapping. State is in-memory only.
@@ -32,25 +32,27 @@ Vanilla HTML/CSS/JS (no JS bundler); packaged into the `web` nginx image via `se
 
 ## Config / credential flow
 
-No app-level config is checked in. Values are injected by the shell installers via `sed` placeholder replacement:
+No app-level config is checked in. **The panel host runs from a `git clone` of this repo** — `service/web` and `service/bot` are the compose *build contexts*, so `git pull && docker compose up -d --build` (or menu option `5. 更新面板`, or simply re-running `sudo ./sss.sh`, which always does `up -d --build`) is the whole update path. `sss.sh` no longer `wget`s `docker-compose.yml` / `service/*` at runtime.
 
-- `sss.sh` replaces `tg_chat_id` / `tg_bot_token` in `docker-compose.yml` (bot reads them as `TG_CHAT_ID` / `TG_BOT_TOKEN`).
-- `agent/sss-agent.sh` downloads `client-linux.py` to `/opt/sss/agent/` and replaces `sss_host` / `sss_user` / `sss_pass` in `sss-agent.service` before enabling it.
-
-Both scripts `wget` files from `GITHUB_RAW_URL` (`raw.githubusercontent.com/lidalao/ServerStatus/master`) **at runtime**, so the repo's `master` branch is the release channel — local edits only take effect once pushed there. **Paths matter:** `sss.sh` fetches `service/bot/*` and `service/web/*`; `agent/sss-agent.sh` fetches `agent/client-linux.py` and `agent/sss-agent.service`. Moving any of these requires updating the matching raw URLs.
+- **TG credentials live in `.env`** (`TG_CHAT_ID` / `TG_BOT_TOKEN`), written by `write_env()` from the two CLI args; `docker-compose.yml` only references `${TG_CHAT_ID:-}` / `${TG_BOT_TOKEN:-}` so no tracked file is ever `sed`-mutated and `git pull` stays conflict-free. `write_env()` also migrates an old-style install by extracting the values previously sed'd into `docker-compose.yml`.
+- `.env`, `config.json` and `json/` are gitignored (runtime state on the panel host).
+- `dc()` wraps compose: prefers `docker compose` (v2 plugin), falls back to `docker-compose` (v1).
+- **Agents still bootstrap over HTTP:** `agent/sss-agent.sh` downloads `client-linux.py` to `/opt/sss/agent/` and replaces `sss_host` / `sss_user` / `sss_pass` in `sss-agent.service` before enabling it. It and `print_agent_cmd` fetch from `GITHUB_RAW_URL` (`raw.githubusercontent.com/lidalao/ServerStatus/master`) **at runtime**, so for the agent side `master` is still the release channel and moving `agent/*` requires updating those raw URLs.
 
 ## Running / testing
 
-No build system, lint, or test suite. Host needs **`jq`** (and docker/docker-compose); **no python on the host** — `bot.py` runs in its container, `client-linux.py` runs on agents.
+No build system, lint, or test suite. Host needs **`jq`** + **`git`** (and docker/compose); **no python on the host** — `bot.py` runs in its container, `client-linux.py` runs on agents.
 
 ```bash
-# 服务端首次安装(带 TG 参数): 装 docker/jq, 拉 service/*, 起栈, 进节点管理菜单
+# 服务端首次安装(带 TG 参数): 装 docker/jq/git, 写 .env, build+起栈, 进节点管理菜单
+git clone https://github.com/lidalao/ServerStatus.git sss && cd sss
 sudo ./sss.sh <TG_CHAT_ID> <TG_BOT_TOKEN>
-# 之后再次运行(栈已起): 直接进节点管理菜单
+# 之后再次运行(读 .env): up -d --build 后进节点管理菜单
 sudo ./sss.sh
+# 更新: 拉代码 + 重建镜像(等价于菜单 5)
+git pull && docker compose up -d --build
 
-docker-compose up -d
-docker-compose logs -f bot        # watch Telegram notifier
+docker compose logs -f bot        # watch Telegram notifier
 
 # 本地预览前端(造样例数据):
 mkdir -p /tmp/prev/json && cp -r service/web/* /tmp/prev/

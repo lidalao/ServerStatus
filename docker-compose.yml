@@ -31,5 +31,5 @@ services:
     depends_on:
       - srv
     environment:
-      - TG_CHAT_ID=tg_chat_id
-      - TG_BOT_TOKEN=tg_bot_token
+      - TG_CHAT_ID=${TG_CHAT_ID:-}
+      - TG_BOT_TOKEN=${TG_BOT_TOKEN:-}

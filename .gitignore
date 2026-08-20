@@ -1,5 +1,7 @@
 .stub/
-json/stats.json
 ref/
 __pycache__/
 .DS_Store
+.env
+config.json
+json/
