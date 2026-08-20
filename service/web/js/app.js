@@ -55,7 +55,11 @@
   }
 
   function fmtUptime(v) {
-    if (typeof v !== 'number') return v ? String(v) : '-';
+    /* 上游 server 会把 uptime 拼成中文 "12 天", 统一改成 12d */
+    if (typeof v !== 'number') {
+      if (!v) return '-';
+      return String(v).replace(/\s*天/g, 'd');
+    }
     if (v <= 0) return '-';
     var d = Math.floor(v / 86400), h = Math.floor((v % 86400) / 3600);
     if (d > 0) return d + 'd ' + h + 'h';

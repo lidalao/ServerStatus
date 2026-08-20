@@ -145,7 +145,13 @@ install_dashboard() {
 
 ensure_config() { [ -f "$CONFIG_FILE" ] || echo '{"servers":[]}' > "$CONFIG_FILE"; }
 
-get_ip() { curl -s --max-time 10 https://api.ipify.org 2>/dev/null || printf '%s' "<本机IP>"; }
+PANEL_IP=""
+get_ip() {
+    [ -n "$PANEL_IP" ] && { printf '%s' "$PANEL_IP"; return; }
+    PANEL_IP=$(curl -s --max-time 10 https://api.ipify.org 2>/dev/null)
+    [ -z "$PANEL_IP" ] && PANEL_IP="<本机IP>"
+    printf '%s' "$PANEL_IP"
+}
 
 gen_user() {
     if [ -r /proc/sys/kernel/random/uuid ]; then
@@ -199,6 +205,47 @@ list_nodes() {
     while IFS='|' read -r id name loc type; do
         printf "  %-5s %-18s %-10s %-8s\n" "$id" "$name" "$loc" "$type"
     done
+}
+
+show_node_detail() {
+    local idx="$1" name loc type month user pass
+    name=$(jq -r ".servers[$idx].name" "$CONFIG_FILE")
+    loc=$(jq -r ".servers[$idx].location" "$CONFIG_FILE")
+    type=$(jq -r ".servers[$idx].type" "$CONFIG_FILE")
+    month=$(jq -r ".servers[$idx].monthstart" "$CONFIG_FILE")
+    user=$(jq -r ".servers[$idx].username" "$CONFIG_FILE")
+    pass=$(jq -r ".servers[$idx].password" "$CONFIG_FILE")
+    echo
+    line
+    printf "  ${bold}[%s] %s${plain}\n" "$idx" "$name"
+    printf "  位置 LOCATION   : %s\n" "$loc"
+    printf "  类型 TYPE       : %s\n" "$type"
+    printf "  月流量起始日    : %s\n" "$month"
+    printf "  用户名 USER     : %s\n" "$user"
+    printf "  密码 PASSWORD   : %s\n" "$pass"
+    info "在机器 ${bold}${name}${plain} 上执行以下命令安装 agent 服务:"
+    print_agent_cmd "$user" "$pass"
+}
+
+view_node() {
+    ensure_config
+    list_nodes
+    local count idx i
+    count=$(jq '.servers | length' "$CONFIG_FILE")
+    [ "$count" -eq 0 ] && return
+    echo
+    ask "请输入要查看的节点编号(回车查看全部):"; read -r idx
+    if [ -z "$idx" ]; then
+        i=0
+        while [ "$i" -lt "$count" ]; do
+            show_node_detail "$i"
+            i=$((i + 1))
+        done
+        return
+    fi
+    [[ "$idx" =~ ^[0-9]+$ ]] || { err "无效输入"; return; }
+    [ "$idx" -ge "$count" ] && { err "编号超出范围"; return; }
+    show_node_detail "$idx"
 }
 
 add_node() {
@@ -301,12 +348,12 @@ menu_loop() {
         echo
         ask "请输入操作编号:"; read -r op
         case "$op" in
-            1) list_nodes; pause ;;
+            1) view_node;   pause ;;
             2) add_node;    pause ;;
             3) remove_node; pause ;;
             4) update_node; pause ;;
             0) echo; ok "再见 👋"; exit 0 ;;
-            *) err "无效输入"; pause ;;
+            *) echo; err "无效输入，已退出"; exit 1 ;;
         esac
     done
 }
