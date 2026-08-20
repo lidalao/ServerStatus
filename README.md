@@ -23,7 +23,7 @@ TG 配置会写进仓库下的 `.env`（已 gitignore，格式见 `.env.sample`�
 
 不想用安装脚本、只想手动起栈的话：`cp .env.sample .env` 填好值，然后 `docker compose up -d --build`。
 
-面板 web 端口在 `.env` 的 `WEB_PORT`（默认 8081），改完 `docker compose up -d` 生效。agent 上报端口 35601 写死在 `docker-compose.yml` 里，不建议改（改了所有已装 agent 都会掉线）。
+端口也在 `.env` 里：`WEB_PORT`（面板 web，默认 8081）和 `REPORT_PORT`（agent 上报，默认 35601），改完 `docker compose up -d` 生效。**`REPORT_PORT` 只在面板还没接入任何 agent 时改**——已经在跑的 agent 连的是老端口，改了会全部离线；而且新端口不会自动写进 agent 安装命令，得手动在 `/etc/systemd/system/sss-agent.service` 的 `ExecStart` 末尾补 `PORT=<端口>`。
 
 # 从旧版迁移
 旧版是 `wget sss.sh` 单文件安装的，目录里没有 `.git`，没法直接 `git pull`，重新 clone 一次即可（只需一次）。老目录里的 TG token 在它自己的 `docker-compose.yml` 里，节点数据在 `config.json`。

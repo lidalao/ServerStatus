@@ -130,9 +130,9 @@ ensure_repo() {
 # TG 配置写进 .env(已 gitignore), docker-compose.yml 保持干净, 不会和 git pull 冲突
 write_env() {
     if [ $# -ge 2 ]; then
-        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\nWEB_PORT=8081\n' "$1" "$2" > "$ENV_FILE"
+        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\nWEB_PORT=8081\nREPORT_PORT=35601\n' "$1" "$2" > "$ENV_FILE"
         chmod 600 "$ENV_FILE"
-        ok "TG 通知配置已写入 ${ENV_FILE}(web 端口也在里面)"
+        ok "TG 通知配置已写入 ${ENV_FILE}(端口也在里面)"
         return
     fi
     [ -f "$ENV_FILE" ] && return
@@ -142,7 +142,7 @@ write_env() {
     old_id=$(sed -n 's/.*TG_CHAT_ID=\([^${} ]\{1,\}\).*/\1/p' docker-compose.yml | head -1)
     old_token=$(sed -n 's/.*TG_BOT_TOKEN=\([^${} ]\{1,\}\).*/\1/p' docker-compose.yml | head -1)
     if [ -n "$old_id" ] && [ -n "$old_token" ] && [ "$old_id" != "tg_chat_id" ]; then
-        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\nWEB_PORT=8081\n' "$old_id" "$old_token" > "$ENV_FILE"
+        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\nWEB_PORT=8081\nREPORT_PORT=35601\n' "$old_id" "$old_token" > "$ENV_FILE"
         chmod 600 "$ENV_FILE"
         warn "已把旧 docker-compose.yml 里的 TG 配置迁移到 ${ENV_FILE}"
         return

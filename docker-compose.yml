@@ -9,7 +9,7 @@ services:
       - ./config.json:/ServerStatus/server/config.json
       - ./json:/usr/share/nginx/html/json
     ports:
-      - 35601:35601
+      - ${REPORT_PORT:-35601}:35601
 
   # 前端面板: 静态资源打包进镜像, 运行时读取共享的 json/stats.json
   web:
