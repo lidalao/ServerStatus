@@ -19,7 +19,7 @@ services:
     volumes:
       - ./json:/usr/share/nginx/html/json:ro
     ports:
-      - 8081:80
+      - ${WEB_PORT:-8081}:80
     depends_on:
       - srv
 

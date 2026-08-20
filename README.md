@@ -19,7 +19,30 @@ git clone https://github.com/lidalao/ServerStatus.git sss && cd sss && sudo ./ss
 
 安装成功后，web服务地址：http://ip:8081
 
-TG 配置会写进仓库下的 `.env`（已 gitignore），节点数据在 `config.json`（同样 gitignore），所以更新代码不会有冲突。
+TG 配置会写进仓库下的 `.env`（已 gitignore，格式见 `.env.sample`），节点数据在 `config.json`（同样 gitignore），所以更新代码不会有冲突。
+
+不想用安装脚本、只想手动起栈的话：`cp .env.sample .env` 填好值，然后 `docker compose up -d --build`。
+
+面板 web 端口在 `.env` 的 `WEB_PORT`（默认 8081），改完 `docker compose up -d` 生效。agent 上报端口 35601 写死在 `docker-compose.yml` 里，不建议改（改了所有已装 agent 都会掉线）。
+
+# 从旧版迁移
+旧版是 `wget sss.sh` 单文件安装的，目录里没有 `.git`，没法直接 `git pull`，重新 clone 一次即可（只需一次）。老目录里的 TG token 在它自己的 `docker-compose.yml` 里，节点数据在 `config.json`。
+
+```
+# 在老目录 sss 的上级执行
+git clone https://github.com/lidalao/ServerStatus.git sss-new
+cp sss/config.json sss-new/                 # 节点数据(用户名/密码都在里面, 别丢)
+
+cd sss-new
+cp .env.sample .env
+grep TG_ ../sss/docker-compose.yml          # 看到旧的 TG_CHAT_ID / TG_BOT_TOKEN
+vi .env                                     # 把这两个值填进去
+
+(cd ../sss && docker compose down)           # 停掉老栈, 释放 35601/8081 端口
+sudo ./sss.sh                               # 不带参数, 直接读 .env
+```
+
+确认面板正常后老目录就可以删了。之后更新见上面的「更新」一节。
 
 # 更新
 在服务端的仓库目录下：

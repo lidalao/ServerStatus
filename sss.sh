@@ -113,6 +113,10 @@ install_docker() {
     fi
 }
 
+# 从 .env 读单个 key(不 source, 避免值里的特殊字符被 shell 解释)
+env_get() { sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | tail -1; }
+web_port() { local v; v=$(env_get WEB_PORT); printf '%s' "${v:-8081}"; }
+
 ensure_repo() {
     # 镜像是用仓库里的 service/ 目录构建的, 必须在 clone 出来的仓库内运行
     if [ ! -f docker-compose.yml ] || [ ! -d service/web ] || [ ! -d service/bot ]; then
@@ -126,9 +130,9 @@ ensure_repo() {
 # TG 配置写进 .env(已 gitignore), docker-compose.yml 保持干净, 不会和 git pull 冲突
 write_env() {
     if [ $# -ge 2 ]; then
-        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\n' "$1" "$2" > "$ENV_FILE"
+        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\nWEB_PORT=8081\n' "$1" "$2" > "$ENV_FILE"
         chmod 600 "$ENV_FILE"
-        ok "TG 通知配置已写入 ${ENV_FILE}"
+        ok "TG 通知配置已写入 ${ENV_FILE}(web 端口也在里面)"
         return
     fi
     [ -f "$ENV_FILE" ] && return
@@ -138,7 +142,7 @@ write_env() {
     old_id=$(sed -n 's/.*TG_CHAT_ID=\([^${} ]\{1,\}\).*/\1/p' docker-compose.yml | head -1)
     old_token=$(sed -n 's/.*TG_BOT_TOKEN=\([^${} ]\{1,\}\).*/\1/p' docker-compose.yml | head -1)
     if [ -n "$old_id" ] && [ -n "$old_token" ] && [ "$old_id" != "tg_chat_id" ]; then
-        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\n' "$old_id" "$old_token" > "$ENV_FILE"
+        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\nWEB_PORT=8081\n' "$old_id" "$old_token" > "$ENV_FILE"
         chmod 600 "$ENV_FILE"
         warn "已把旧 docker-compose.yml 里的 TG 配置迁移到 ${ENV_FILE}"
         return
@@ -146,6 +150,7 @@ write_env() {
 
     err "首次安装需要提供 TG 参数: sudo ./sss.sh <TG_CHAT_ID> <TG_BOT_TOKEN>"
     err "(Bot token 找 @BotFather, chat id 找 @getuserID)"
+    err "也可以手动: cp .env.sample .env 后填写"
     exit 1
 }
 
@@ -162,7 +167,7 @@ install_dashboard() {
         err "启动失败, 请手动执行查看输出: docker compose up -d --build"
         exit 1
     fi
-    ok "面板已就绪，web 地址：http://<本机IP>:8081"
+    ok "面板已就绪，web 地址：http://$(get_ip):$(web_port)"
 }
 
 # git pull + 重建镜像, 一步更新脚本和前端
