@@ -7,7 +7,6 @@ LABEL description="Static dashboard frontend for ServerStatus"
 COPY . /usr/share/nginx/html
 
 # 覆盖默认 server 块: 给 html/css/js 加 no-cache 头
+# (nginx.conf 不能进 .dockerignore, 否则这里 COPY 不到; 改成事后从站点根目录删)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# 配置写错的话在这里就构建失败, 而不是等容器起来 crash loop
-RUN nginx -t
+RUN rm -f /usr/share/nginx/html/nginx.conf && nginx -t
