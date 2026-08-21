@@ -22,7 +22,7 @@ agent/{client-linux.py,sss-agent.sh,sss-agent.service}  # 被监控机器侧
 Three roles communicate through the upstream ServerStatus server, run unmodified as the `cppla/serverstatus:latest` Docker image:
 
 - **Server side (panel host)** — `docker-compose.yml` (project `name: sss`) runs three services, auto-named `sss-srv-1` / `sss-web-1` / `sss-bot-1` (no `container_name`): **`srv`** (upstream `cppla/serverstatus`, TCP report port `35601`) receives agent uploads and writes `json/stats.json`; **`web`** (nginx, frontend baked into the image via `service/web/Dockerfile`) serves the dashboard on `8081` and reads the shared `./json` mounted read-only at the `json/` subpath; **`bot`** (built from `service/bot/`) sends Telegram notifications. `config.json` (`{"servers":[...]}`) is bind-mounted into `srv` and is the single source of truth for which nodes exist. `srv` and `web` share the host `./json` directory — srv writes, web reads.
-- **Node management** — implemented **directly in `sss.sh`** (bash + `jq`); there is no `_sss.py` anymore. The menu (`menu_loop`) does view/add/remove/update against `config.json` via `jq` (atomic temp-file + `mv` writes, `sort_by(.name)`), then `dc restart` to reload. Menu `1. 查看节点` (`view_node`/`show_node_detail`) prints a node's location/type/monthstart/username/password **and re-prints its agent install command** (blank input = all nodes); `5. 更新面板` runs `git pull` + rebuild then `exec`s itself; any unrecognised input exits (no "press 0 to quit" loop). Each added node gets a random `username` (`/proc/sys/kernel/random/uuid`) + `password` (`/dev/urandom`, ≥1 digit/lower/upper); `print_agent_cmd` prints the exact `agent/sss-agent.sh` install command.
+- **Node management** — implemented **directly in `sss.sh`** (bash + `jq`); there is no `_sss.py` anymore. **`sss.sh` does node CRUD only — it never installs docker, never builds, never starts the stack.** `pre_check` just verifies root + `jq` + `docker` + being inside the repo; `menu_loop` warns (via `stack_running`) and prints `docker compose up -d --build` if `srv` isn't up, but never runs it. The menu does view/add/remove/update against `config.json` via `jq` (atomic temp-file + `mv` writes, `sort_by(.name)`), then `dc restart srv` — only `srv` reads `config.json`. Menu `1. 查看节点` (`view_node`/`show_node_detail`) prints a node's location/type/monthstart/username/password **and re-prints its agent install command** (blank input = all nodes); any unrecognised input exits (no "press 0 to quit" loop). `ensure_config` also errors out if `config.json` is a *directory* — what docker creates when the bind-mount source is missing. Each added node gets a random `username` (`/proc/sys/kernel/random/uuid`) + `password` (`/dev/urandom`, ≥1 digit/lower/upper); `print_agent_cmd` prints the exact `agent/sss-agent.sh` install command.
 - **Agent side (monitored machines)** — `agent/client-linux.py` (upstream cppla collector, only modification: `tupd()` stubbed to return zeros) connects to the panel's `35601` and authenticates with the node's USER/PASSWORD, streaming metrics. Installed as a systemd service via `agent/sss-agent.sh`.
 
 `service/bot/bot.py` polls `http://srv/json/stats.json` (the `srv` service hostname on the compose network — auto-named container `sss-srv-1`) every 3s and sends Telegram messages on state changes. **Debounce:** a node must report the same state for 10 consecutive polls (`counterOn`/`counterOff`) before a message fires — suppresses flapping. State is in-memory only.
@@ -32,12 +32,13 @@ Vanilla HTML/CSS/JS (no JS bundler); packaged into the `web` nginx image via `se
 
 ## Config / credential flow
 
-No app-level config is checked in. **The panel host runs from a `git clone` of this repo** — `service/web` and `service/bot` are the compose *build contexts*, so `git pull && docker compose up -d --build` (or menu option `5. 更新面板`, or simply re-running `sudo ./sss.sh`, which always does `up -d --build`) is the whole update path. `sss.sh` no longer `wget`s `docker-compose.yml` / `service/*` at runtime.
+No app-level config is checked in. **The panel host runs from a `git clone` of this repo**, and **deployment is plain docker**: `cp .env.sample .env` + `echo '{"servers":[]}' > config.json` + `docker compose up -d --build` installs, `git pull && docker compose up -d --build` updates (`service/web` and `service/bot` are the compose *build contexts*, so `--build` is what ships frontend changes). `sss.sh` is **not** part of that path — it only manages nodes.
 
-- **TG credentials live in `.env`** (`TG_CHAT_ID` / `TG_BOT_TOKEN`), written by `write_env()` from the two CLI args; `docker-compose.yml` only references `${TG_CHAT_ID:-}` / `${TG_BOT_TOKEN:-}` so no tracked file is ever `sed`-mutated and `git pull` stays conflict-free. `write_env()` also migrates an old-style install by extracting the values previously sed'd into `docker-compose.yml`.
-- `.env`, `config.json` and `json/` are gitignored (runtime state on the panel host); `.env.sample` is tracked and documents the two keys for the manual `docker compose up -d --build` path.
-- **Ports live in `.env`**: `WEB_PORT` (default 8081) and `REPORT_PORT` (default 35601) feed `${WEB_PORT:-8081}:80` / `${REPORT_PORT:-35601}:35601`; `sss.sh` reads `WEB_PORT` back via `env_get`/`web_port()` (grep, not `source`) for the "web 地址" line. **`REPORT_PORT` is a host-port remap only** — the container still listens on 35601, `print_agent_cmd` does not emit a port, and `agent/sss-agent.sh` takes exactly 3 args, so a non-default value means every agent needs ` PORT=<port>` appended to its unit's `ExecStart` by hand (`client-linux.py` parses `PORT=` from argv). Documented as "only change it before any agent is connected" in `.env.sample`.
+- **TG credentials live in `.env`** (`TG_CHAT_ID` / `TG_BOT_TOKEN`); `docker-compose.yml` only references `${TG_CHAT_ID:-}` / `${TG_BOT_TOKEN:-}`, so no tracked file is ever `sed`-mutated and `git pull` stays conflict-free. `.env.sample` documents every key.
+- **Ports live in `.env`** too: `WEB_PORT` (default 8081) and `REPORT_PORT` (default 35601) feed `${WEB_PORT:-8081}:80` / `${REPORT_PORT:-35601}:35601`. **`REPORT_PORT` is a host-port remap only** — the container still listens on 35601, `print_agent_cmd` does not emit a port, and `agent/sss-agent.sh` takes exactly 3 args, so a non-default value means every agent needs ` PORT=<port>` appended to its unit's `ExecStart` by hand (`client-linux.py` parses `PORT=` from argv). `.env.sample` says: only change it before any agent is connected.
+- `.env`, `config.json` and `json/` are gitignored (runtime state on the panel host). `config.json` must exist **before** the first `up` — docker turns a missing bind-mount source into a directory.
 - `dc()` wraps compose: prefers `docker compose` (v2 plugin), falls back to `docker-compose` (v1).
+- **Cache headers:** `service/web/nginx.conf` (COPYed to `conf.d/default.conf`, validated by `RUN nginx -t` at build) sends `Cache-Control: no-cache, must-revalidate` for the page/CSS/JS and `no-store` for `/json/`. Without it Cloudflare pins the fixed-URL `js/app.js` and frontend updates appear not to deploy; `stats.json` was unaffected because `app.js` fetches it with `?_=<ts>`. Already-cached copies still need one manual purge.
 - **Agents still bootstrap over HTTP:** `agent/sss-agent.sh` downloads `client-linux.py` to `/opt/sss/agent/` and replaces `sss_host` / `sss_user` / `sss_pass` in `sss-agent.service` before enabling it. It and `print_agent_cmd` fetch from `GITHUB_RAW_URL` (`raw.githubusercontent.com/lidalao/ServerStatus/master`) **at runtime**, so for the agent side `master` is still the release channel and moving `agent/*` requires updating those raw URLs.
 
 ## Running / testing
@@ -45,13 +46,15 @@ No app-level config is checked in. **The panel host runs from a `git clone` of t
 No build system, lint, or test suite. Host needs **`jq`** + **`git`** (and docker/compose); **no python on the host** — `bot.py` runs in its container, `client-linux.py` runs on agents.
 
 ```bash
-# 服务端首次安装(带 TG 参数): 装 docker/jq/git, 写 .env, build+起栈, 进节点管理菜单
+# 服务端首次安装: 需要 docker; 面板本身完全由 compose 驱动
 git clone https://github.com/lidalao/ServerStatus.git sss && cd sss
-sudo ./sss.sh <TG_CHAT_ID> <TG_BOT_TOKEN>
-# 之后再次运行(读 .env): up -d --build 后进节点管理菜单
-sudo ./sss.sh
-# 更新: 拉代码 + 重建镜像(等价于菜单 5)
+cp .env.sample .env && vi .env            # TG_CHAT_ID / TG_BOT_TOKEN / WEB_PORT
+echo '{"servers":[]}' > config.json       # 必须先建, 否则 docker 建成目录
+docker compose up -d --build
+# 更新: 拉代码 + 重建镜像
 git pull && docker compose up -d --build
+# 节点增删改查(需要 jq): 只改 config.json + restart srv, 不碰 docker 其余部分
+sudo ./sss.sh
 
 docker compose logs -f bot        # watch Telegram notifier
 

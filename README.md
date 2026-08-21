@@ -8,63 +8,100 @@
 >由于未改动cppla版的任何代码，所以，我愿意把这个项目称为ServerStatus的小插件, 理论上它可以为任何版本的ServerStatus服务
 
 
-# 安装
-在**服务端**克隆本仓库后一键安装。请记得替换成你自己的YOUR_TG_CHAT_ID和YOUR_TG_BOT_TOKEN。
+# 新用户：全新部署
 
-其中，Bot token可以通过@BotFather创建机器人获取， Chat id可以通过@getuserID获取。
+服务端需要 **docker**（没有就 `curl -sL https://get.docker.com | bash`）和 **jq**（`apt install -y jq`，只有节点管理脚本用得到）。
 
+```bash
+git clone https://github.com/lidalao/ServerStatus.git sss && cd sss
+
+# 1. 填配置
+cp .env.sample .env
+vi .env          # TG_CHAT_ID / TG_BOT_TOKEN, 端口按需改
+                 # Bot token 找 @BotFather, chat id 找 @getuserID
+
+# 2. 建空节点表(必须, 否则 docker 会把 config.json 当目录创建, srv 起不来)
+echo '{"servers":[]}' > config.json
+
+# 3. 起栈
+docker compose up -d --build
 ```
-git clone https://github.com/lidalao/ServerStatus.git sss && cd sss && sudo ./sss.sh YOUR_TG_CHAT_ID YOUR_TG_BOT_TOKEN
+
+打开 `http://<你的IP>:8081`（端口即 `.env` 里的 `WEB_PORT`）就能看到面板了，此时还没有节点。
+
+```bash
+# 4. 加节点
+sudo ./sss.sh
 ```
 
-安装成功后，web服务地址：http://ip:8081
+选 `2. 添加节点`，填名字/位置/类型，脚本会随机生成用户名密码、写进 `config.json`、重启 `srv`，然后打印出这台机器的 **agent 安装命令**——复制到被监控的机器上执行即可。命令忘了就用菜单 `1. 查看节点` 再翻出来。
 
-TG 配置会写进仓库下的 `.env`（已 gitignore，格式见 `.env.sample`），节点数据在 `config.json`（同样 gitignore），所以更新代码不会有冲突。
+# 老用户：升级
 
-不想用安装脚本、只想手动起栈的话：`cp .env.sample .env` 填好值，然后 `docker compose up -d --build`。
+先看你的面板目录里有没有 `.git`：
 
-端口也在 `.env` 里：`WEB_PORT`（面板 web，默认 8081）和 `REPORT_PORT`（agent 上报，默认 35601），改完 `docker compose up -d` 生效。**`REPORT_PORT` 只在面板还没接入任何 agent 时改**——已经在跑的 agent 连的是老端口，改了会全部离线；而且新端口不会自动写进 agent 安装命令，得手动在 `/etc/systemd/system/sss-agent.service` 的 `ExecStart` 末尾补 `PORT=<端口>`。
-
-# 从旧版迁移
-旧版是 `wget sss.sh` 单文件安装的，目录里没有 `.git`，没法直接 `git pull`，重新 clone 一次即可（只需一次）。老目录里的 TG token 在它自己的 `docker-compose.yml` 里，节点数据在 `config.json`。
-
+```bash
+cd /你的/面板目录 && ls -d .git
 ```
-# 在老目录 sss 的上级执行
+
+### 情况 A：有 `.git`（已经是仓库版）
+
+```bash
+git pull && docker compose up -d --build
+```
+
+完事。`.env`、`config.json`、`json/` 都已 gitignore，`git pull` 不会冲突。
+
+### 情况 B：没有 `.git`（旧版 `wget sss.sh` 装的）
+
+旧版是单文件下载安装的，没法 `git pull`，重新 clone 一次即可（只需这一次）。TG token 在旧目录自己的 `docker-compose.yml` 里，节点数据在 `config.json`。
+
+```bash
+# 在老目录(假设叫 sss)的上级执行
 git clone https://github.com/lidalao/ServerStatus.git sss-new
-cp sss/config.json sss-new/                 # 节点数据(用户名/密码都在里面, 别丢)
+cp sss/config.json sss-new/          # 节点数据: 每个节点的用户名密码都在里面, 丢了要挨台重装 agent
 
 cd sss-new
 cp .env.sample .env
-grep TG_ ../sss/docker-compose.yml          # 看到旧的 TG_CHAT_ID / TG_BOT_TOKEN
-vi .env                                     # 把这两个值填进去
+grep TG_ ../sss/docker-compose.yml   # 打印出旧的 TG_CHAT_ID / TG_BOT_TOKEN
+vi .env                              # 填进去; 端口保持默认
 
-(cd ../sss && docker compose down)           # 停掉老栈, 释放 35601/8081 端口
-sudo ./sss.sh                               # 不带参数, 直接读 .env
+(cd ../sss && docker compose down)   # 停老栈, 释放端口
+docker compose up -d --build
 ```
 
-确认面板正常后老目录就可以删了。之后更新见上面的「更新」一节。
+确认面板正常后老目录就能删了。**agent 端一台都不用动**——面板 IP、节点凭据、上报端口都没变。
 
-# 更新
-在服务端的仓库目录下：
+> 升级后如果页面看着没变化，多半是 CDN（Cloudflare 之类）还攥着旧的 `js/app.js`。新版镜像已经让 nginx 下发 `Cache-Control: no-cache`，但**已经被缓存住的那份得手动 purge 一次**，之后就不用管了。
 
-```
-git pull && sudo ./sss.sh
-```
+# 日常更新
 
-或者在节点管理菜单里选 `5. 更新面板`（等价于 `git pull` + 重建镜像）。
-
-只想手动重建也可以：
-
-```
+```bash
 git pull && docker compose up -d --build
+```
+
+前端是打进镜像的，所以必须带 `--build`。
+
+# 节点管理
+
+```bash
+sudo ./sss.sh
+```
+
+`sss.sh` **只管节点**，不装 docker、不建镜像、不起栈——那些都是 `docker compose` 的事。它做的是：增删改查 `config.json`、`docker compose restart srv` 让配置生效、打印 agent 安装命令。
+
+```
+1. 查看节点   看某个节点的位置/类型/用户名/密码, 并重新打印 agent 安装命令(回车看全部)
+2. 添加节点   随机生成凭据, 加完直接给出 agent 安装命令
+3. 删除节点
+4. 更新节点   改名字/位置/类型/月流量起始日
+0. 退出
 ```
 
 更多信息请移步 https://lidalao.com/archives/87  +1ip
 
 挺好用的？送作者一杯可乐？->
  [<img src="https://user-images.githubusercontent.com/52455330/139071980-91302a8a-37b1-4196-803e-f91b1de2ee5b.gif" width="60" height="40" />](https://shop.lidalao.com/buy/4)
-
-
 
 # 参考
 - https://github.com/cppla/ServerStatus

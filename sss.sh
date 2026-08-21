@@ -3,14 +3,12 @@
 #========================================================
 #   System Required: CentOS 7+ / Debian 8+ / Ubuntu 16+ /
 #     Arch 未测试
-#   Description: Server Status 监控安装 + 节点管理脚本
+#   Description: Server Status 节点管理脚本(安装/更新交给 docker compose)
 #   Github: https://github.com/lidalao/ServerStatus
 #========================================================
 
 GITHUB_RAW_URL="https://raw.githubusercontent.com/lidalao/ServerStatus/master"
-GITHUB_REPO_URL="https://github.com/lidalao/ServerStatus.git"
 CONFIG_FILE="config.json"
-ENV_FILE=".env"
 
 # 始终在脚本(仓库)所在目录下操作, 允许从任意路径调用
 cd "$(cd "$(dirname "$0")" && pwd)" || exit 1
@@ -19,7 +17,6 @@ cd "$(cd "$(dirname "$0")" && pwd)" || exit 1
 red=$'\e[0;31m'
 green=$'\e[0;32m'
 yellow=$'\e[0;33m'
-blue=$'\e[0;34m'
 cyan=$'\e[0;36m'
 bold=$'\e[1m'
 dim=$'\e[2m'
@@ -43,38 +40,26 @@ info() { printf '%s\n' "${cyan}[*]${plain} $*"; }
 ok()   { printf '%s\n' "${green}[✓]${plain} $*"; }
 warn() { printf '%s\n' "${yellow}[!]${plain} $*"; }
 err()  { printf '%s\n' "${red}[✗]${plain} $*"; }
-step() { printf '\n%s\n' "${blue}${bold}»${plain} ${bold}$*${plain}"; }
 ask()  { printf '%s' "${cyan}»${plain} $* "; }
 pause(){ printf '\n%s' "${dim}按回车继续…${plain}"; read -r _; }
 
 pre_check() {
-    command -v systemctl >/dev/null 2>&1
-    if [[ $? != 0 ]]; then
-        err "不支持此系统：未找到 systemctl 命令"
-        exit 1
-    fi
-
-    # check root
     [[ $EUID -ne 0 ]] && err "必须使用 root 用户运行此脚本！" && exit 1
-}
 
-install_soft() {
-    (command -v yum >/dev/null 2>&1 && yum install $* -y) ||
-    (command -v apt >/dev/null 2>&1 && apt install $* -y) ||
-    (command -v pacman >/dev/null 2>&1 && pacman -Syu $*) ||
-    (command -v apt-get >/dev/null 2>&1 &&  apt-get install $* -y)
+    local miss=0
+    command -v jq     >/dev/null 2>&1 || { err "缺少 jq，请先安装:  apt install -y jq  /  yum install -y jq"; miss=1; }
+    command -v docker >/dev/null 2>&1 || { err "缺少 docker，请先安装:  curl -sL https://get.docker.com | bash"; miss=1; }
+    [ "$miss" = 1 ] && exit 1
 
-    if [[ $? != 0 ]]; then
-        err "安装基础软件失败，稍等会重试"
+    if [ ! -f docker-compose.yml ]; then
+        err "当前目录不是 sss 仓库(没有 docker-compose.yml)"
+        err "请 cd 到 git clone 出来的仓库目录再运行"
         exit 1
     fi
 }
 
-install_base() {
-    (command -v curl >/dev/null 2>&1 && command -v wget >/dev/null 2>&1 &&
-     command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1) ||
-        install_soft curl wget jq git
-}
+# 起栈/重建是 docker 的活, 这里只检测 + 提示, 不代劳
+stack_running() { [ -n "$(dc ps -q srv 2>/dev/null)" ]; }
 
 # docker compose(v2 插件) 优先, 回退 docker-compose(v1)
 dc() {
@@ -85,121 +70,17 @@ dc() {
     fi
 }
 
-install_docker() {
-    install_base
-    command -v docker >/dev/null 2>&1
-    if [[ $? != 0 ]]; then
-        install_base
-        info "正在安装 Docker"
-        bash <(curl -sL https://get.docker.com) >/dev/null 2>&1
-        if [[ $? != 0 ]]; then
-            err "下载 Docker 失败"
-            exit 1
-        fi
-        systemctl enable docker.service
-        systemctl start docker.service
-        ok "Docker 安装成功"
-    fi
-
-    if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
-        info "正在安装 Docker Compose"
-        wget --no-check-certificate -O /usr/local/bin/docker-compose "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" >/dev/null 2>&1
-        if [[ $? != 0 ]]; then
-            err "下载 Compose 失败"
-            return 0
-        fi
-        chmod +x /usr/local/bin/docker-compose
-        ok "Docker Compose 安装成功"
-    fi
-}
-
-# 从 .env 读单个 key(不 source, 避免值里的特殊字符被 shell 解释)
-env_get() { sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | tail -1; }
-web_port() { local v; v=$(env_get WEB_PORT); printf '%s' "${v:-8081}"; }
-
-ensure_repo() {
-    # 镜像是用仓库里的 service/ 目录构建的, 必须在 clone 出来的仓库内运行
-    if [ ! -f docker-compose.yml ] || [ ! -d service/web ] || [ ! -d service/bot ]; then
-        err "当前目录不是 sss 仓库(缺少 docker-compose.yml 或 service/)"
-        err "请先克隆仓库再运行:"
-        printf '%s\n' "${green}  git clone ${GITHUB_REPO_URL} sss && cd sss && sudo ./sss.sh <TG_CHAT_ID> <TG_BOT_TOKEN>${plain}"
-        exit 1
-    fi
-}
-
-# TG 配置写进 .env(已 gitignore), docker-compose.yml 保持干净, 不会和 git pull 冲突
-write_env() {
-    if [ $# -ge 2 ]; then
-        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\nWEB_PORT=8081\nREPORT_PORT=35601\n' "$1" "$2" > "$ENV_FILE"
-        chmod 600 "$ENV_FILE"
-        ok "TG 通知配置已写入 ${ENV_FILE}(端口也在里面)"
-        return
-    fi
-    [ -f "$ENV_FILE" ] && return
-
-    # 兼容旧安装: TG 参数曾被 sed 直接写进 docker-compose.yml, 迁移到 .env
-    local old_id old_token
-    old_id=$(sed -n 's/.*TG_CHAT_ID=\([^${} ]\{1,\}\).*/\1/p' docker-compose.yml | head -1)
-    old_token=$(sed -n 's/.*TG_BOT_TOKEN=\([^${} ]\{1,\}\).*/\1/p' docker-compose.yml | head -1)
-    if [ -n "$old_id" ] && [ -n "$old_token" ] && [ "$old_id" != "tg_chat_id" ]; then
-        printf 'TG_CHAT_ID=%s\nTG_BOT_TOKEN=%s\nWEB_PORT=8081\nREPORT_PORT=35601\n' "$old_id" "$old_token" > "$ENV_FILE"
-        chmod 600 "$ENV_FILE"
-        warn "已把旧 docker-compose.yml 里的 TG 配置迁移到 ${ENV_FILE}"
-        return
-    fi
-
-    err "首次安装需要提供 TG 参数: sudo ./sss.sh <TG_CHAT_ID> <TG_BOT_TOKEN>"
-    err "(Bot token 找 @BotFather, chat id 找 @getuserID)"
-    err "也可以手动: cp .env.sample .env 后填写"
-    exit 1
-}
-
-install_dashboard() {
-    ensure_repo
-    install_docker
-
-    [ -f "$CONFIG_FILE" ] || echo '{"servers":[]}' > "$CONFIG_FILE"
-    mkdir -p json
-    write_env "$@"
-
-    step "构建并启动面板"
-    if ! dc up -d --build >/dev/null 2>&1; then
-        err "启动失败, 请手动执行查看输出: docker compose up -d --build"
-        exit 1
-    fi
-    ok "面板已就绪，web 地址：http://$(get_ip):$(web_port)"
-}
-
-# git pull + 重建镜像, 一步更新脚本和前端
-update_panel() {
-    ensure_repo
-    if [ ! -d .git ]; then
-        err "当前目录不是 git 仓库, 无法自动更新"
-        err "请重新 git clone ${GITHUB_REPO_URL} (config.json / .env 拷过去即可)"
-        return
-    fi
-    # 仓库可能是普通用户 clone 的, root 跑 git 会报 dubious ownership
-    git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$PWD" ||
-        git config --global --add safe.directory "$PWD"
-
-    step "拉取最新代码"
-    if ! git pull --ff-only; then
-        err "git pull 失败, 请手动处理后重试"
-        return
-    fi
-    step "重建并重启容器"
-    if ! dc up -d --build; then
-        err "重建失败, 请检查上面的输出"
-        return
-    fi
-    ok "更新完成, 正在重新载入脚本…"
-    # 脚本自身可能已被更新, exec 重新执行新版本
-    exec "$0"
-}
-
 # ================= 节点管理(纯 shell + jq) =================
 
-ensure_config() { [ -f "$CONFIG_FILE" ] || echo '{"servers":[]}' > "$CONFIG_FILE"; }
+ensure_config() {
+    # docker 会把缺失的 bind mount 源当目录建出来, 这时 srv 起不来
+    if [ -d "$CONFIG_FILE" ]; then
+        err "${CONFIG_FILE} 是个目录(多半是先跑了 docker compose up 才建的配置)"
+        err "请执行: docker compose down && rmdir ${CONFIG_FILE} && echo '{\"servers\":[]}' > ${CONFIG_FILE} && docker compose up -d"
+        exit 1
+    fi
+    [ -f "$CONFIG_FILE" ] || echo '{"servers":[]}' > "$CONFIG_FILE"
+}
 
 PANEL_IP=""
 get_ip() {
@@ -231,10 +112,14 @@ gen_pass() {
     printf '%s' "$out"
 }
 
+# 只有 srv 读 config.json, 重启它即可; web/bot 不受影响
 restart_stack() {
-    info "操作完成，等待服务重启…"
-    dc restart >/dev/null 2>&1
-    ok "完成"
+    info "正在重启 srv 让新配置生效…"
+    if dc restart srv >/dev/null 2>&1; then
+        ok "完成"
+    else
+        err "重启 srv 失败, 请手动执行: docker compose restart srv"
+    fi
 }
 
 print_agent_cmd() {
@@ -395,12 +280,16 @@ menu_loop() {
         clear 2>/dev/null
         banner
         printf '%s\n' "${dim}  详细教程: https://lidalao.com/archives/87${plain}"
+        if ! stack_running; then
+            echo
+            warn "面板未启动。启动/更新请执行(节点照样可以先加好):"
+            printf '%s\n' "${green}  docker compose up -d --build${plain}"
+        fi
         list_nodes
         echo
         printf '%s\n' "  ${bold}操作菜单${plain}"
         printf '%s\n' "    ${green}1${plain}. 查看节点      ${green}2${plain}. 添加节点"
         printf '%s\n' "    ${green}3${plain}. 删除节点      ${green}4${plain}. 更新节点"
-        printf '%s\n' "    ${green}5${plain}. 更新面板(git pull + 重建镜像)"
         printf '%s\n' "    ${green}0${plain}. 退出"
         echo
         ask "请输入操作编号:"; read -r op
@@ -409,7 +298,6 @@ menu_loop() {
             2) add_node;    pause ;;
             3) remove_node; pause ;;
             4) update_node; pause ;;
-            5) update_panel; pause ;;
             0) echo; ok "再见 👋"; exit 0 ;;
             *) echo; err "无效输入，已退出"; exit 1 ;;
         esac
@@ -420,5 +308,4 @@ menu_loop() {
 clear 2>/dev/null
 banner
 pre_check
-install_dashboard "$@"
 menu_loop
