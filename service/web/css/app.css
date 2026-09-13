@@ -277,12 +277,12 @@ tr.exrow > td {
   #grid th:nth-child(15), #grid td:nth-child(15) { display: none; }
   .topbar, .wrap { padding-left: 14px; padding-right: 14px; }
 }
-/* 窄屏(手机): 再隐藏 TYPE(4) REGION(5) UPTIME(6) NETWORK(8), 仅留 协议/节点/负载/CPU/内存/硬盘, 网络下放到详情 */
+/* 窄屏(手机): 再隐藏 PROTO(2) TYPE(4) REGION(5) UPTIME(6), 保留 节点/负载/网络/CPU/内存/硬盘 */
 @media (max-width: 640px) {
+  #grid th:nth-child(2), #grid td:nth-child(2),
   #grid th:nth-child(4), #grid td:nth-child(4),
   #grid th:nth-child(5), #grid td:nth-child(5),
-  #grid th:nth-child(6), #grid td:nth-child(6),
-  #grid th:nth-child(8), #grid td:nth-child(8) { display: none; }
+  #grid th:nth-child(6), #grid td:nth-child(6) { display: none; }
   body { font-size: 11px; }
   .topbar { padding: 12px 10px; gap: 10px; }
   .brand h1 { font-size: 15px; }
@@ -294,4 +294,8 @@ tr.exrow > td {
   .duo, .mono, .ping { font-size: 11px; }
   .gauge { width: 28px; height: 28px; }
   .ring-val { font-size: 9px; }
+}
+/* 小尺寸手机: 给实时网络双行数值留出空间 */
+@media (max-width: 360px) {
+  #grid th, #grid tr.row > td { padding-left: 3px; padding-right: 3px; }
 }

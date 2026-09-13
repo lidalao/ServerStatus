@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6366f1"/>
-      <stop offset="1" stop-color="#8b5cf6"/>
+    <linearGradient id="g" x1="16" y1="12" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#66ffe3"/>
+      <stop offset=".45" stop-color="#00d4aa"/>
+      <stop offset="1" stop-color="#4da6ff"/>
     </linearGradient>
   </defs>
-  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#g)"/>
-  <path d="M12 34 H24 L29 22 L36 44 L41 32 H52"
-        fill="none" stroke="#fff" stroke-width="4"
-        stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="#0a0e14" stroke="#2a3a4f" stroke-width="2"/>
+  <!-- Angular S / signal bolt: a single bold silhouette stays legible at 16px. -->
+  <path d="M24 13 H49 L42 23 H28 L24 28 H45 L32 51 H14 L21 41 H29 L33 35 H12 Z" fill="url(#g)"/>
 </svg>
