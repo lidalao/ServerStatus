@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="16" y1="12" x2="48" y2="52" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#66ffe3"/>
-      <stop offset=".45" stop-color="#00d4aa"/>
-      <stop offset="1" stop-color="#4da6ff"/>
-    </linearGradient>
-  </defs>
-  <rect x="2" y="2" width="60" height="60" rx="16" fill="#0a0e14" stroke="#2a3a4f" stroke-width="2"/>
-  <!-- Angular S / signal bolt: a single bold silhouette stays legible at 16px. -->
-  <path d="M24 13 H49 L42 23 H28 L24 28 H45 L32 51 H14 L21 41 H29 L33 35 H12 Z" fill="url(#g)"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M8 14h24L54 32 32 50H8l22-18z" fill="#16c7b1"/><path d="M17 23h13l11 9-11 9H17" fill="none" stroke="#438dff" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"/></svg>
