@@ -103,3 +103,10 @@ SSS_WORKER_URL=http://127.0.0.1:8788 SSS_MANAGEMENT_TOKEN=local-test-token bash 
 [设计审计记录](cloudflare/DESIGN_AUDIT.md)包含月流量、通知交付和验证边界。
 
 GitHub Actions 已配置 macOS、Ubuntu 22.04/24.04 的完整回归测试矩阵。本地 macOS 已验证 Bash 入口，其他系统以对应运行器结果为准；Debian 采用同一 Bash 实现，实际主机验收仍待完成。
+
+
+## 合并与发布规则
+
+合并到主分支时，必须同步将 `sss.sh` 默认下载源和 init 模板、Agent 安装器默认下载源、`.env.sample` 的 `GITHUB_RAW_URL` 调整到实际合并目标分支，并更新测试中的下载/归档地址与文档。先确认主分支名称，不假设为 main 或 master；当前开发分支的默认源在合并前保持不变。
+
+已有管理机 `.env` 和 Agent 保存的下载源不会因合并自动改变。发布说明必须包含它们的来源切换与更新步骤；用户明确指定的分支/标签应保留，凭据及 D1 ID 不因来源切换而改动。合并前运行完整本地回归，合并后核对目标分支可下载 CLI、Agent 安装器、Python 程序和 service 模板。在已有安装仍依赖开发分支时，不能直接删除该分支而不提供迁移方式。

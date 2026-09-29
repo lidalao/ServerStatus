@@ -24,3 +24,14 @@ This is a Cloudflare-only branch. Do not add Docker, a self-hosted backend, Go s
 Run `npm run test:local` for the local Worker/D1 integration suite. It needs Node/npm and local loopback access but no Cloudflare account. `npm run dev:local` and `npm run db:migrate:local` provide an interactive local development environment.
 
 Deployment tests must inject Cloudflare API/command substitutes. No automatic CF deployment or GitHub push during development. Keep generated Token/DB IDs for retries; never regenerate the Token on update or silently recreate a missing configured database.
+
+
+## Merging and release sources
+
+When merging this branch into the primary branch, include a coordinated update of all default GitHub source references to that actual destination branch. Confirm the destination branch name; do not assume `main` or `master`. Keep the feature-branch defaults until a merge is requested.
+
+- Update the default `GITHUB_RAW_URL` in `sss.sh`, its `init` template, `agent/sss-agent.sh`, and `.env.sample` together.
+- Update corresponding download/archive URL expectations in tests and branch-specific instructions or examples in documentation. Both raw.githubusercontent.com downloads and codeload.github.com source archives must resolve to the same release source.
+- Preserve explicit user-selected branches/tags and the installer’s saved-source behavior. Existing management `.env` files and Agent source settings retain the old source; document how operators switch their `GITHUB_RAW_URL` or explicitly override it when updating the Agent. Never change their credentials or database IDs for a source switch.
+- Search for stale feature-branch references, run the complete local regression suite, and after the merge verify that the destination branch serves the CLI, Agent installer, Python Agent and service template. Do not remove the feature branch while supported existing installations still depend on it without providing a migration path.
+- Merging or deploying CF alone does not update downloaded CLI/Agent copies; describe their separate update steps. Git push and CF deployment still require user authorization.
