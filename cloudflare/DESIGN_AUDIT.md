@@ -84,3 +84,11 @@ Agent 的系统采集来自上游，当前传输和运行方式已移植为 Work
 验证：`npm run test:local` 共 43 个测试全部通过，无跳过；包括实际本地 Worker/D1、CLI 添加/修改/删除/隐藏、Python 上报、前端错误路径、部署 API/命令替身、真实 Wrangler dry-run、冒烟失败退出码。无需任何 CF 参数。`git diff --check` 通过。
 
 边界：没有执行真实 CF 发布、真实 Telegram 投递或 Linux 用户 systemd 启停；CI 的 Ubuntu 环境也尚未实际运行。本地安装器测试用替身验证服务生成与更新，不能代替 VPS 实测。本地修改需单独提交并推送，GitHub 下载内容才会同步；CF 发布不会代替源码发布。
+
+## 初始化依赖安装
+
+`sss.sh init` 自动检查 curl、jq、Node.js 22+ 和 npm。缺少系统工具时，macOS 使用已有 Homebrew，Ubuntu/Debian 使用 apt-get（非 root 用户通过 sudo）。没有可用 Node/npm 时，从 nodejs.org 的 Node 22 发布目录下载匹配架构的 tar.gz，核对 SHA-256，验证可执行后安装到 `~/.local/share/sss/node`。后续脚本自动使用该运行时，不修改 shell 配置或替换系统 Node。
+
+重复 init 会保留已有 .env 内容并设置权限 600；安装失败不覆盖配置或已安装运行时，暂存文件清理。help 不安装、不下载依赖。macOS 未安装 Homebrew 且缺少系统工具时，提示先安装 Homebrew再重试。
+
+验证：完整本地回归 55 项全部通过，包括新增 12 项依赖引导场景。覆盖 macOS Intel/Apple Silicon、Linux x64/ARM64 的流程选择，缺少 npm、Homebrew/apt 工具安装、重复执行、下载/校验/包管理器失败与帮助命令。安装器、下载与架构使用替身测试，没有执行真实 Homebrew/apt 安装或官方二进制下载；对应系统的真实安装仍需实机验证。

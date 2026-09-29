@@ -161,7 +161,7 @@ test('CLI creates private unified settings without overwriting an existing file'
   assert.equal(fs.statSync(filename).mode & 0o777, 0o600);
   const first = fs.readFileSync(filename, 'utf8');
   assert.match(first, /CLOUDFLARE_API_TOKEN=/);
-  assert.notEqual(spawnSync('bash', [path.join(root, 'sss.sh'), '--init'], options).status, 0);
+  assert.equal(spawnSync('bash', [path.join(root, 'sss.sh'), '--init'], options).status, 0);
   assert.equal(fs.readFileSync(filename, 'utf8'), first);
 });
 

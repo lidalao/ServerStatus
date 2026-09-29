@@ -13,7 +13,7 @@ bash ./sss.sh deploy
 bash ./sss.sh
 ```
 
-`init` 生成权限为 600 的 `.env`，不会覆盖已有文件。也可以复制 `.env.sample`。默认读取 `sss.sh` 同目录的 `.env`；指定其他文件用 `SSS_ENV_FILE=/path/to/sss.env bash ./sss.sh`。环境变量优先于文件值。文件只支持单行 `KEY=VALUE`（可带一对引号），不执行 shell 命令、不展开变量、不支持行尾注释。
+`init` 自动补齐 curl、jq、Node.js 22+ 和 npm，再生成权限为 600 的 `.env`。已有配置不会覆盖，重复执行可补齐依赖。macOS 缺少 curl/jq 时使用已有 Homebrew；Ubuntu/Debian 使用 apt-get，普通用户可能需要 sudo 安装系统工具。缺少合适 Node.js/npm 时从 nodejs.org 下载 Node.js 22，校验 SHA-256 后安装到 `~/.local/share/sss/node`；后续脚本自动使用，不替换系统 Node.js、不改 shell 配置。也可以复制 `.env.sample`。默认读取 `sss.sh` 同目录的 `.env`；指定其他文件用 `SSS_ENV_FILE=/path/to/sss.env bash ./sss.sh`。环境变量优先于文件值。文件只支持单行 `KEY=VALUE`（可带一对引号），不执行 shell 命令、不展开变量、不支持行尾注释。
 
 首次部署只需填写：
 
@@ -22,7 +22,7 @@ CLOUDFLARE_ACCOUNT_ID=你的账号ID
 CLOUDFLARE_API_TOKEN=你的API Token
 ```
 
-Token 应针对目标账号具备 Workers Scripts 编辑、D1 编辑、Workers Account Settings 读取权限；脚本使用 Token，不需要 `wrangler login`。账号首次使用 Workers 时，需要先启用 workers.dev 子域名。CF Token 用于部署，与节点管理 Token 不同。
+Token 应针对目标账号具备 Workers Scripts 编辑、D1 编辑权限；脚本使用 Token，不需要 `wrangler login`。账号首次使用 Workers 时，需要先启用 workers.dev 子域名。CF Token 用于部署，与节点管理 Token 不同。
 
 其他配置都在同一个文件：
 

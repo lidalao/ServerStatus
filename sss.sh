@@ -12,6 +12,8 @@ LEGACY_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/sss/remote.env"
 DIRTY=0
 REVISION=0
 CONFIG_FILE=""
+SSS_NODE_PATH="$HOME/.local/share/sss/node"
+[ ! -d "$SSS_NODE_PATH/bin" ] || export PATH="$SSS_NODE_PATH/bin:$PATH"
 
 # .env 是数据文件，绝不 source 或 eval；环境变量优先。
 read_settings() {
@@ -55,7 +57,6 @@ cyan=$'\e[0;36m'
 bold=$'\e[1m'
 dim=$'\e[2m'
 plain=$'\e[0m'
-export PATH=$PATH:/usr/local/bin
 
 # ---- UI 助手 ----
 banner() {
@@ -448,8 +449,116 @@ deploy_cloudflare() {
     return "$result"
 }
 
+node_ready() {
+    local version
+    command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 || return 1
+    version=$(node --version 2>/dev/null) || return 1
+    [[ "$version" =~ ^v([0-9]+)\. ]] && [ "${BASH_REMATCH[1]}" -ge 22 ] || return 1
+    npm --version >/dev/null 2>&1
+}
+
+install_user_node() {
+    local platform="$1" architecture stage line pattern release="" checksum="" actual parent
+    case "$(uname -m)" in
+        x86_64|amd64) architecture=x64 ;;
+        arm64|aarch64) architecture=arm64 ;;
+        *) err "自动安装 Node.js 仅支持 x64/arm64，请手动安装 Node.js 22+ 和 npm"; return 1 ;;
+    esac
+    command -v tar >/dev/null 2>&1 || { err "缺少 tar，请先安装"; return 1; }
+    command -v shasum >/dev/null 2>&1 || command -v sha256sum >/dev/null 2>&1 || {
+        err "缺少 SHA-256 校验工具，请先安装 shasum 或 sha256sum"; return 1;
+    }
+    parent=$(dirname "$SSS_NODE_PATH")
+    mkdir -p "$parent" || return 1
+    stage=$(mktemp -d "$parent/.node-install.XXXXXX") || return 1
+    info "从 nodejs.org 下载 Node.js 22 和 npm，安装到当前用户目录…"
+    if ! curl -fsSL --connect-timeout 20 --max-time 120 https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt -o "$stage/SHASUMS256.txt"; then
+        err "Node.js 校验清单下载失败"; rm -rf "$stage"; return 1
+    fi
+    pattern="^([a-fA-F0-9]{64})[[:space:]]+node-(v22\.[0-9]+\.[0-9]+)-${platform}-${architecture}\.tar\.gz$"
+    while IFS= read -r line; do
+        if [[ "$line" =~ $pattern ]]; then
+            checksum=${BASH_REMATCH[1]}; release="node-${BASH_REMATCH[2]}-${platform}-${architecture}"
+            break
+        fi
+    done < "$stage/SHASUMS256.txt"
+    if [ -z "$release" ] || ! curl -fsSL --connect-timeout 20 --max-time 300 \
+        "https://nodejs.org/dist/latest-v22.x/$release.tar.gz" -o "$stage/node.tar.gz"; then
+        err "Node.js 安装包下载失败或未找到适配版本"; rm -rf "$stage"; return 1
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual=$(sha256sum "$stage/node.tar.gz")
+    else
+        actual=$(shasum -a 256 "$stage/node.tar.gz")
+    fi
+    if [ "${actual%% *}" != "$checksum" ]; then
+        err "Node.js SHA-256 校验失败，未安装"; rm -rf "$stage"; return 1
+    fi
+    if ! tar -xzf "$stage/node.tar.gz" -C "$stage" ||
+       ! (export PATH="$stage/$release/bin:$PATH"; node_ready); then
+        err "Node.js 安装包无法运行，现有安装保持不变"; rm -rf "$stage"; return 1
+    fi
+    if [ -e "$SSS_NODE_PATH" ]; then
+        mv "$SSS_NODE_PATH" "$stage/previous" || { rm -rf "$stage"; return 1; }
+    fi
+    if ! mv "$stage/$release" "$SSS_NODE_PATH"; then
+        [ ! -e "$stage/previous" ] || mv "$stage/previous" "$SSS_NODE_PATH"
+        rm -rf "$stage"; return 1
+    fi
+    rm -rf "$stage"
+    export PATH="$SSS_NODE_PATH/bin:$PATH"
+    hash -r
+}
+
+setup_dependencies() {
+    local platform tool missing=() administrator=()
+    for tool in curl jq; do
+        command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+    done
+    case "$(uname -s)" in
+        Darwin)
+            platform=darwin
+            if [ "${#missing[@]}" -gt 0 ]; then
+                command -v brew >/dev/null 2>&1 || {
+                    err "自动安装 ${missing[*]} 需要 Homebrew，请先从 https://brew.sh 安装 Homebrew 后重试 init"; return 1;
+                }
+                info "使用 Homebrew 安装缺少的工具: ${missing[*]}"
+                brew install "${missing[@]}" || return 1
+            fi
+            ;;
+        Linux)
+            platform=linux
+            if [ "${#missing[@]}" -gt 0 ]; then
+                command -v apt-get >/dev/null 2>&1 || { err "自动安装依赖仅支持 Ubuntu/Debian 的 apt-get"; return 1; }
+                if [ "$EUID" -ne 0 ]; then
+                    command -v sudo >/dev/null 2>&1 || { err "安装 ${missing[*]} 需要 sudo 或管理员先安装这些工具"; return 1; }
+                    administrator=(sudo)
+                    info "安装系统工具 ${missing[*]} 需要 sudo，可能提示输入系统密码；Node.js 安装不需要 sudo。"
+                fi
+                for tool in "${missing[@]}"; do
+                    if [ "$tool" = curl ]; then missing+=(ca-certificates); break; fi
+                done
+                "${administrator[@]}" apt-get update &&
+                    "${administrator[@]}" apt-get install -y "${missing[@]}" || return 1
+            fi
+            ;;
+        *) err "自动初始化仅支持 macOS、Ubuntu 和 Debian"; return 1 ;;
+    esac
+    for tool in curl jq; do
+        command -v "$tool" >/dev/null 2>&1 || { err "$tool 安装后仍不可用"; return 1; }
+    done
+    node_ready || install_user_node "$platform" || return 1
+    ok "依赖已就绪: curl、jq、Node.js 22+、npm"
+}
+
 init_settings() {
-    [ ! -e "$SSS_ENV_FILE" ] || { err "配置文件已存在，不会覆盖: $SSS_ENV_FILE"; return 1; }
+    [ ! -e "$SSS_ENV_FILE" ] || [ -f "$SSS_ENV_FILE" ] || { err "配置路径不是文件: $SSS_ENV_FILE"; return 1; }
+    setup_dependencies || return 1
+    [ ! -e "$SSS_ENV_FILE" ] || {
+        chmod 600 "$SSS_ENV_FILE" || return 1
+        info "配置文件已存在，已保留: $SSS_ENV_FILE"; return 0;
+    }
+    mkdir -p "$(dirname "$SSS_ENV_FILE")" || return 1
     (umask 077; cat > "$SSS_ENV_FILE" <<'SETTINGS'
 # 首次部署必填；仅管理已有节点时可留空。
 CLOUDFLARE_ACCOUNT_ID=
@@ -486,7 +595,12 @@ show_help() {
     不需要 Node.js、CF API Token 或登录 CF。
 
   init
-    在配置文件路径生成权限为 600 的 .env 模板；已有文件不会被覆盖。
+    自动检查并安装缺少的 curl、jq、Node.js 22+ 和 npm。
+    macOS 的系统工具通过 Homebrew 安装（需要已安装 Homebrew）；
+    Ubuntu/Debian 通过 apt-get 安装，普通用户可能需要 sudo。
+    Node.js 22 和 npm 从官网获取并验证 SHA-256，安装到 ~/.local/share/sss/node，
+    后续脚本自动使用该运行时，不修改 shell 配置或替换系统 Node.js。
+    在配置文件路径生成权限为 600 的 .env 模板；已有文件保留，重复 init 可补齐依赖。
     首次部署前填写 CLOUDFLARE_ACCOUNT_ID 和 CLOUDFLARE_API_TOKEN。
     仅管理已有服务时，只填写 Worker 地址与管理 Token 即可。
 
@@ -496,7 +610,7 @@ show_help() {
     验证管理 API，并将 D1 ID、Worker 地址与管理 Token 写回 .env。
     已保存的 D1 和管理 Token 会复用，节点配置不会清空。
     需要 Node.js 22+、npm、CF Account ID 和具备对应权限的 CF API Token。
-    CF Token 权限: Workers Scripts 编辑、D1 编辑、Workers Account Settings 读取。
+    CF Token 权限: Workers Scripts 编辑、D1 编辑。
     CF 账号需已启用 workers.dev 子域名，不需要 wrangler login。
 
   update [--plan]
