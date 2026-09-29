@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var S = { servers: [], expanded: {} };
+  var S = { servers: [], expanded: Object.create(null) };
 
   /* ----------------- theme: light / dark / system ----------------- */
   var THEME_KEY = 'theme';
@@ -152,8 +152,8 @@
     var online = !!(s.online4 || s.online6);
     var memPct = pct(s.memory_used, s.memory_total);
     var hddPct = pct(s.hdd_used, s.hdd_total);
-    var mIn = (Number(s.network_in) || 0) - (Number(s.last_network_in) || 0);
-    var mOut = (Number(s.network_out) || 0) - (Number(s.last_network_out) || 0);
+    var mIn = s.monthly_network_in == null ? (Number(s.network_in) || 0) - (Number(s.last_network_in) || 0) : Number(s.monthly_network_in) || 0;
+    var mOut = s.monthly_network_out == null ? (Number(s.network_out) || 0) - (Number(s.last_network_out) || 0) : Number(s.monthly_network_out) || 0;
     var load = (Number(s.load_1) === -1) ? '–' : Math.max(0, Number(s.load_1) || 0).toFixed(2);
     var cpuVal = Math.max(0, Number(s.cpu) || 0);
     return {
@@ -198,7 +198,7 @@
   function updateRows(servers) {
     var rowsEl = document.getElementById('rows');
     var rows = rowsEl.querySelectorAll('tr.row[data-name]');
-    var map = {};
+    var map = Object.create(null);
     for (var i = 0; i < rows.length; i++) map[rows[i].getAttribute('data-name')] = rows[i];
     for (var k = 0; k < servers.length; k++) {
       var s = servers[k], tr = map[s.name || ''];
@@ -225,7 +225,7 @@
   }
 
   function render(j) {
-    var servers = (j && j.servers) || [];
+    var servers = SSSVisibility.visibleServers((j && j.servers) || []);
     // 上游 stats.json 的节点顺序不保证稳定; 固定按 name 排序。否则顺序一变,
     // sameRowSet 即为 false → 整表 innerHTML 重建 → 行上下跳 + 仪表重新动画(整表抖动)。
     servers = servers.slice().sort(function (a, b) {
@@ -257,7 +257,7 @@
 
   function tick() {
     fetch('json/stats.json?_=' + Date.now(), { cache: 'no-store' })
-      .then(function (r) { return r.json(); })
+      .then(function (r) { if (!r.ok) throw new Error('Stats request failed'); return r.json(); })
       .then(render)
       .catch(function () { /* keep last view on transient errors */ });
   }
@@ -275,11 +275,10 @@
 
   function detailHTML(s) {
     var KB = 1024, MB = 1048576;
-    var io = humanSpeed(s.io_read) + ' / ' + humanSpeed(s.io_write);
     return '<div class="exwrap">'
       + seg('Network ↓|↑', humanSpeed(s.network_rx) + ' / ' + humanSpeed(s.network_tx))
       + seg('Memory|Swap', humanBytes((Number(s.memory_used) || 0) * KB) + ' / ' + humanBytes((Number(s.memory_total) || 0) * KB) + ' | ' + humanBytes((Number(s.swap_used) || 0) * KB) + ' / ' + humanBytes((Number(s.swap_total) || 0) * KB))
-      + seg('Disk|IO', humanBytes((Number(s.hdd_used) || 0) * MB) + ' / ' + humanBytes((Number(s.hdd_total) || 0) * MB) + ' | ' + io)
+      + seg('Disk', humanBytes((Number(s.hdd_used) || 0) * MB) + ' / ' + humanBytes((Number(s.hdd_total) || 0) * MB))
       + seg('TCP/UDP/Proc/Thread', (Number(s.tcp_count) || 0) + ' / ' + (Number(s.udp_count) || 0) + ' / ' + (Number(s.process_count) || 0) + ' / ' + (Number(s.thread_count) || 0))
       + seg('CU/CT/CM', pingPart(s.time_10010, s.ping_10010) + ' / ' + pingPart(s.time_189, s.ping_189) + ' / ' + pingPart(s.time_10086, s.ping_10086))
       + '</div>';
@@ -293,7 +292,8 @@
     var rows = document.querySelectorAll('#rows .exrow');
     for (var i = 0; i < rows.length; i++) {
       var n = rows[i].getAttribute('data-for');
-      var open = !!S.expanded[n];
+      var s = findServer(n);
+      var open = !!S.expanded[n] && !!s && !!(s.online4 || s.online6);
       if (open) rows[i].removeAttribute('hidden'); else rows[i].setAttribute('hidden', '');
       var main = rows[i].previousElementSibling;   // 对应主行: 展开时隐藏二者之间的分隔线
       if (main && main.classList && main.classList.contains('row')) main.classList.toggle('open', open);

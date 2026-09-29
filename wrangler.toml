@@ -1,0 +1,17 @@
+name = "sss-server-status"
+main = "cloudflare/worker.js"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "service/web"
+binding = "ASSETS"
+run_worker_first = ["/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sss-server-status"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "cloudflare/migrations"
+
+[triggers]
+crons = ["* * * * *"]

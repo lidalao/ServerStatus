@@ -1,0 +1,19 @@
+name = "sss-server-status-local"
+main = "cloudflare/worker.js"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "service/web"
+binding = "ASSETS"
+run_worker_first = ["/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sss-server-status-local"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "cloudflare/migrations"
+
+[vars]
+SSS_MANAGEMENT_TOKEN = "local-test-token"
+TG_BOT_TOKEN = ""
+TG_CHAT_ID = ""

@@ -2,6 +2,12 @@
 ref/
 __pycache__/
 .DS_Store
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
 .env
+.env.*
+!.env.sample
 config.json
 json/
