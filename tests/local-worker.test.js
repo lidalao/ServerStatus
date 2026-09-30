@@ -22,7 +22,7 @@ function runWrangler(args) {
     cwd: root,
     encoding: 'utf8',
     input: 'y\n',
-    env: { ...process.env, WRANGLER_LOG_PATH: logFile, WRANGLER_SEND_METRICS: 'false' },
+    env: { ...process.env, WRANGLER_LOG_PATH: logFile, WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false', CLOUDFLARE_INCLUDE_PROCESS_ENV: 'false' },
   });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 }
@@ -90,7 +90,7 @@ before(async () => {
     '--port', String(port), '--persist-to', '.wrangler/test-state', '--log-level', 'error',
   ], {
     cwd: root,
-    env: { ...process.env, WRANGLER_LOG_PATH: logFile, WRANGLER_SEND_METRICS: 'false' },
+    env: { ...process.env, WRANGLER_LOG_PATH: logFile, WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false', CLOUDFLARE_INCLUDE_PROCESS_ENV: 'false' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   worker.stdout.on('data', (data) => { workerOutput += data.toString(); });
@@ -426,6 +426,17 @@ test('local Cloudflare Worker and dashboard acceptance cases', async (t) => {
     const downloads = fs.readFileSync(installOptions.env.SSS_TEST_DOWNLOAD_LOG, 'utf8');
     assert.match(downloads, /test-release\/agent\/client-linux.py/);
     assert.doesNotMatch(downloads, /ServerStatus\/master/);
+    const managerReady = path.join(stateDir, 'agent-manager-ready');
+    fs.writeFileSync(path.join(fakeBin, 'systemctl'), '#!/bin/sh\n[ "$1" = --user ] || exit 99\n[ "$XDG_RUNTIME_DIR" = "/run/user/$(id -u)" ] || exit 98\ncase "$DBUS_SESSION_BUS_ADDRESS" in ""|"unix:path=$XDG_RUNTIME_DIR/bus") ;; *) exit 97 ;; esac\n[ -f "$SSS_TEST_MANAGER_READY" ] || exit 1\nprintf "%s\\n" "$*" >> "$SSS_TEST_SYSTEMCTL_LOG"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, 'loginctl'), '#!/bin/sh\n[ "$1" = --no-ask-password ] && [ "$2" = enable-linger ] && [ "$3" = "$(id -un)" ] || exit 99\ntouch "$SSS_TEST_MANAGER_READY"\n', { mode: 0o755 });
+    const recoveredInstall = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh'), '--worker', baseUrl, 'unpriv-user', 'unpriv-pass'], {
+      ...installOptions, env: { ...installOptions.env, XDG_RUNTIME_DIR: '/run/user/foreign', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/foreign/bus', SSS_TEST_MANAGER_READY: managerReady },
+    });
+    assert.equal(recoveredInstall.status, 0, recoveredInstall.stdout + recoveredInstall.stderr);
+    assert.match(recoveredInstall.stdout, /自动修复/);
+    assert.equal(fs.readFileSync(unitPath, 'utf8'), unit, 'reinstall repairs session and keeps the same node credentials');
+    fs.writeFileSync(path.join(fakeBin, 'systemctl'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$SSS_TEST_SYSTEMCTL_LOG"\n', { mode: 0o755 });
+
     const obsoleteSource = path.join(stateDir, 'obsolete-agent.py');
     fs.writeFileSync(obsoleteSource, '# old TCP Agent\nprint("Connecting...")\n');
     const rejected = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh'), '--worker', baseUrl, 'new-user', 'new-pass'], {
@@ -440,6 +451,20 @@ test('local Cloudflare Worker and dashboard acceptance cases', async (t) => {
     assert.equal(fs.readFileSync(agentPath, 'utf8'), savedAgent);
     assert.equal(fs.readFileSync(unitPath, 'utf8'), unit);
     assert.doesNotMatch(fs.readFileSync(serviceLog, 'utf8'), /disable/);
+
+    fs.writeFileSync(path.join(fakeBin, 'loginctl'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, 'sudo'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, 'systemctl'), '#!/bin/sh\necho "Failed to connect to bus: Permission denied" >&2\nexit 1\n', { mode: 0o755 });
+    const unavailable = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh'), '--worker', baseUrl, 'new-user', 'new-pass'], installOptions);
+    assert.notEqual(unavailable.status, 0);
+    assert.match(unavailable.stdout, /loginctl enable-linger/);
+    assert.equal(fs.readFileSync(agentPath, 'utf8'), savedAgent);
+    assert.equal(fs.readFileSync(unitPath, 'utf8'), unit);
+    const refusedRemoval = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh')], { ...installOptions, input: '2\n' });
+    assert.notEqual(refusedRemoval.status, 0);
+    assert.doesNotMatch(refusedRemoval.stdout, /卸载Agent完成/);
+    assert.equal(fs.readFileSync(agentPath, 'utf8'), savedAgent);
+    assert.equal(fs.readFileSync(unitPath, 'utf8'), unit);
 
   });
 

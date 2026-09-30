@@ -13,7 +13,7 @@ assert.ok(Number.isInteger(port) && port > 0 && port <= 65535, 'Invalid SSS_SMOK
 const url = `http://127.0.0.1:${port}`;
 const token = 'local-test-token';
 const wrangler = path.join(root, 'node_modules/wrangler/bin/wrangler.js');
-const env = { ...process.env, WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: path.join(root, state, 'wrangler.log') };
+const env = { ...process.env, WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false', CLOUDFLARE_INCLUDE_PROCESS_ENV: 'false', WRANGLER_LOG_PATH: path.join(root, state, 'wrangler.log') };
 const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const socket = net.createServer();

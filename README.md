@@ -69,12 +69,16 @@ SSS_MANAGEMENT_TOKEN=部署机器.env中的管理Token
 
 运行 `bash ./sss.sh`：菜单 **2** 添加、**3** 删除、**4** 修改、**5** 切换 Web 隐藏状态。编辑只改变本地草稿，菜单 **6** 提交到远端。提交使用 revision CAS，防止覆盖另一台管理机器的修改。
 
-添加后先提交，再复制脚本打印的完整命令到 VPS，以普通用户执行。命令包含节点凭据和相同 GitHub 源；不需要 sudo 或 Docker。Agent 位于 `~/.local/share/sss/agent`，用户 service 位于 `~/.config/systemd/user/sss-agent.service`。
+添加后先提交，再复制脚本打印的完整命令到 VPS，以普通用户执行。命令包含节点凭据和相同 GitHub 源；Agent 以当前用户运行，不需要 Docker。若用户 systemd manager 尚未启动，安装器会自动修复；主机策略可能要求一次 sudo 授权以启用当前用户的 linger 和 manager。Agent 位于 `~/.local/share/sss/agent`，用户 service 位于 `~/.config/systemd/user/sss-agent.service`。
 
 ```bash
 systemctl --user status sss-agent
 journalctl --user -u sss-agent -n 50 --no-pager
 ```
+
+若出现 `Failed to connect to bus`，安装器会按当前 UID 修正运行目录和 D-Bus 地址，再连接用户 manager。用户 manager 未启动时，会自动尝试启用当前用户的 linger；主机策略要求管理员权限时，自动调用 sudo 启用 linger 并启动对应的 `user@UID.service`，可能提示系统密码。Agent 本身仍以当前用户运行。若权限不足或系统服务损坏，安装器给出诊断，必要时检查 `libpam-systemd`、`dbus-user-session` 和服务日志。不要手动创建 `/run/user` 或放宽其权限。用户 manager 不可用时，安装器不会覆盖已有安装或删除无法停止的 Agent。
+
+Agent 明确使用 `ServerStatus-Agent/1.0` 标识访问上报 API，避免 Python 默认 User-Agent 被边缘规则误拒。HTTP 错误会记录状态、Cloudflare 错误码和 CF-Ray，不打印节点凭据或响应正文；如果上报接口被 Access 或 Challenge 保护，需要允许机器客户端正常访问。
 
 Agent 每 15 秒上报。用户 manager 和注销/重启后存活取决于 VPS 主机策略，必要时主机管理员需启用 linger。Agent 的原生 `/proc` 采集和 systemd 生命周期需在实际 Linux VPS 验证。
 

@@ -27,6 +27,7 @@ import errno
 import subprocess
 import threading
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 from queue import Queue
 
 def get_uptime():
@@ -265,9 +266,35 @@ def post_worker_report(metrics):
     payload = json.dumps({'username': USER, 'password': PASSWORD, 'metrics': metrics})
     request = Request(WORKER_URL.rstrip('/') + '/api/agent/report', data=payload.encode("utf-8"))
     request.add_header('Content-Type', 'application/json')
-    response = urlopen(request, timeout=20)
-    response.read()
-    response.close()
+    request.add_header('Accept', 'application/json')
+    request.add_header('User-Agent', 'ServerStatus-Agent/1.0')
+    try:
+        with urlopen(request, timeout=20) as response:
+            body = response.read(4096)
+    except HTTPError as error:
+        body = error.read(4096).decode('utf-8', 'replace')
+        details = ['HTTP ' + str(error.code)]
+        code = re.search(r'error code:\s*(1[0-9]{3})', body, re.IGNORECASE)
+        if code:
+            details.append('Cloudflare error ' + code.group(1))
+        if error.headers.get('cf-mitigated') == 'challenge':
+            details.append('Cloudflare challenge; Agent API must allow non-browser requests')
+        if error.code == 401:
+            details.append('check node credentials and whether the node was submitted')
+        if error.code == 403:
+            details.append('check Cloudflare security/Access rules for the Agent API')
+        ray = error.headers.get('cf-ray', '')
+        if re.fullmatch(r'[A-Za-z0-9-]{1,80}', ray):
+            details.append('CF-Ray=' + ray)
+        error.close()
+        # Never log arbitrary response bodies, node credentials or request payloads.
+        raise RuntimeError('; '.join(details)) from None
+    try:
+        accepted = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        raise RuntimeError('Worker returned a non-JSON response; check address and Access/challenge rules') from None
+    if not isinstance(accepted, dict) or accepted.get('ok') is not True:
+        raise RuntimeError('Worker did not acknowledge the Agent report')
 
 def configure(arguments):
     string_keys = {'USER', 'PASSWORD', 'WORKER_URL'}

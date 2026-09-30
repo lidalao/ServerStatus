@@ -41,11 +41,77 @@ download_file() {
     fi
 }
 
-activate_user_service() {
-    systemctl --user daemon-reload || {
-        echo -e "${red}无法连接当前用户的 systemd manager。请在正常登录的用户会话中运行；安装和运行 Agent 不需要 root。${plain}"
+prepare_user_environment() {
+    local runtime="/run/user/$(id -u)"
+    # sudo/su and non-login shells may inherit another user's session variables.
+    if [ ! -d "$runtime" ] && [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+       [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNTIME_DIR" ]; then
+        runtime="$XDG_RUNTIME_DIR"
+    fi
+    if [ -d "$runtime" ] && [ ! -O "$runtime" ]; then
+        echo "用户运行目录不属于当前用户，拒绝连接: $runtime"
         return 1
-    }
+    fi
+    export XDG_RUNTIME_DIR="$runtime"
+    unset DBUS_SESSION_BUS_ADDRESS
+    if [ -S "$runtime/bus" ]; then
+        [ -O "$runtime/bus" ] || { echo "用户 D-Bus socket 不属于当前用户，拒绝连接"; return 1; }
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus"
+    fi
+}
+
+user_service_diagnostic() {
+    local uid username
+    uid=$(id -u); username=$(id -un)
+    echo -e "${red}无法连接当前用户的 systemd manager；不是 Worker 地址或节点凭据错误。${plain}"
+    printf '当前用户: %s (UID=%s)，运行目录: %s\n' "$username" "$uid" "${XDG_RUNTIME_DIR:-未设置}"
+    echo "已按当前用户重新设置会话环境；若仍失败，请使用该用户直接 SSH 登录，检查用户 manager 和 D-Bus。"
+    printf '检查命令: loginctl show-user %q -p Linger -p State\n' "$username"
+    printf '主机管理员可执行: loginctl enable-linger %q\n' "$username"
+    printf '主机管理员可执行: systemctl start user@%s.service\n' "$uid"
+    echo "若用户 manager 启动失败，管理员需检查 libpam-systemd/dbus-user-session 和 user@ 服务日志。"
+    echo "无法取得主机授权或启动用户 manager；未修改 /run/user 权限，也未停止旧版系统 Agent。"
+}
+
+wait_user_manager() {
+    local attempt
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        prepare_user_environment || return 1
+        systemctl --user daemon-reload >/dev/null 2>&1 && return 0
+        sleep 0.2
+    done
+    return 1
+}
+
+recover_user_manager() {
+    local uid username administrator=()
+    uid=$(id -u); username=$(id -un)
+    command -v loginctl >/dev/null 2>&1 || return 1
+    echo "当前用户 manager 不可用，正在自动修复 $username (UID=$uid) 的 linger 和服务…"
+    # First try the current user's logind policy without an authorization prompt.
+    if loginctl --no-ask-password enable-linger "$username" >/dev/null 2>&1; then
+        wait_user_manager && return 0
+    fi
+    if [ "$uid" -ne 0 ]; then
+        command -v sudo >/dev/null 2>&1 || return 1
+        echo "主机修复需要一次 sudo 授权，可能提示系统密码；Agent 仍以当前用户运行。"
+        administrator=(sudo)
+    fi
+    "${administrator[@]}" loginctl enable-linger "$username" &&
+        "${administrator[@]}" systemctl start "user@$uid.service" || return 1
+    wait_user_manager
+}
+
+ensure_user_manager() {
+    prepare_user_environment || { user_service_diagnostic; return 1; }
+    systemctl --user daemon-reload >/dev/null 2>&1 && return 0
+    recover_user_manager && return 0
+    user_service_diagnostic
+    return 1
+}
+
+activate_user_service() {
+    ensure_user_manager || return 1
     systemctl --user enable --now sss-agent && systemctl --user restart sss-agent || {
         echo -e "${red}Agent 文件已安装，但 user service 启动失败。可检查: systemctl --user status sss-agent${plain}"
         return 1
@@ -99,6 +165,7 @@ install_agent() {
         echo "首次安装请使用节点管理界面打印的安装命令（包含 Worker URL、用户名和密码）"
         return 1
     fi
+    ensure_user_manager || return 1
     local stage destination_service="$SSS_AGENT_SERVICE"
     stage=$(mktemp -d) || return 1
     chmod 0700 "$stage"
@@ -135,7 +202,11 @@ CHECK
 }
 
 uninstall_agent() {
-    (systemctl --user disable --now sss-agent) >/dev/null 2>&1
+    ensure_user_manager || return 1
+    systemctl --user disable --now sss-agent || {
+        echo "无法停止当前用户的 Agent，保留安装文件，请修复用户服务后重试卸载"
+        return 1
+    }
     rm -rf "$SSS_AGENT_PATH" "$SSS_AGENT_SERVICE"
     systemctl --user daemon-reload >/dev/null 2>&1
 }
@@ -159,8 +230,7 @@ show_menu() {
         install_agent
         ;;
     2)
-        uninstall_agent
-        echo -e "${green}卸载Agent完成${plain}"
+        uninstall_agent && echo -e "${green}卸载Agent完成${plain}"
         ;;
     *)
         echo -e "${red}请输入正确的数字 [0-2]${plain}"

@@ -179,3 +179,44 @@ test('manual smoke failure retains a failing exit status when Worker cleanup suc
   assert.match(output, /500/);
   assert.equal(code, 1, output);
 });
+
+
+test('Agent identifies its API client and reports Cloudflare errors without exposing credentials', () => {
+  const result = spawnSync('python3', ['-c', `
+import importlib.util, io, json
+from unittest.mock import patch
+from urllib.error import HTTPError
+spec = importlib.util.spec_from_file_location('agent', 'agent/client-linux.py')
+a = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(a)
+a.configure(['WORKER_URL=https://example.com', 'USER=private-node-user', 'PASSWORD=private-node-password'])
+class Accepted(io.BytesIO):
+    def __enter__(self): return self
+    def __exit__(self, *args): self.close()
+def accept(request, timeout):
+    assert request.get_header('User-agent') == 'ServerStatus-Agent/1.0'
+    assert request.get_header('Accept') == 'application/json'
+    assert request.get_method() == 'POST'
+    assert json.loads(request.data)['username'] == a.USER
+    return Accepted(b'{"ok":true}')
+with patch.object(a, 'urlopen', side_effect=accept):
+    a.post_worker_report({'network_in': 0, 'network_out': 0})
+for status, headers, body, expected in [
+    (403, {'cf-ray': 'test-ray', 'cf-mitigated': 'challenge'}, b'error code: 1010 private-node-password', 'Cloudflare error 1010'),
+    (401, {}, b'private-node-user private-node-password', 'check node credentials'),
+]:
+    error = HTTPError('https://example.com', status, 'Forbidden', headers, io.BytesIO(body))
+    with patch.object(a, 'urlopen', side_effect=error):
+        try: a.post_worker_report({})
+        except RuntimeError as error:
+            assert expected in str(error)
+            assert a.USER not in str(error) and a.PASSWORD not in str(error)
+        else: raise AssertionError('error was hidden')
+for body in [b'<html>Login</html>', b'{"ok":false}', b'[]']:
+    with patch.object(a, 'urlopen', return_value=Accepted(body)):
+        try: a.post_worker_report({})
+        except RuntimeError: pass
+        else: raise AssertionError('unacknowledged report accepted')
+`], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});

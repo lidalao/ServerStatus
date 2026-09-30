@@ -92,3 +92,11 @@ Agent 的系统采集来自上游，当前传输和运行方式已移植为 Work
 重复 init 会保留已有 .env 内容并设置权限 600；安装失败不覆盖配置或已安装运行时，暂存文件清理。help 不安装、不下载依赖。macOS 未安装 Homebrew 且缺少系统工具时，提示先安装 Homebrew再重试。
 
 验证：完整本地回归 55 项全部通过，包括新增 12 项依赖引导场景。覆盖 macOS Intel/Apple Silicon、Linux x64/ARM64 的流程选择，缺少 npm、Homebrew/apt 工具安装、重复执行、下载/校验/包管理器失败与帮助命令。安装器、下载与架构使用替身测试，没有执行真实 Homebrew/apt 安装或官方二进制下载；对应系统的真实安装仍需实机验证。
+
+## Agent 会话恢复与 HTTPS 上报修复（2026-09-30）
+
+安装器按当前 UID 修正 XDG_RUNTIME_DIR 和 D-Bus 地址，拒绝连接其他用户的目录/socket。用户 manager 不可用时先尝试当前用户的 logind 授权，再按主机策略通过 sudo 启用该用户 linger 和启动 user@UID.service。恢复失败不替换安装文件；卸载无法停止服务时保留文件。Agent 仍运行在当前用户的 user service，不触碰旧版系统服务。
+
+公开部署的接口验证发现：Python 默认 User-Agent 收到 Cloudflare 403 / error code 1010；明确的 ServerStatus-Agent/1.0 标识使健康接口返回 200，使用无效测试凭据的上报返回预期 401。Agent 增加该标识、JSON Accept 和明确成功响应校验；错误日志只保留状态码、CF 错误码及安全的 CF-Ray，不输出凭据或任意响应正文。无需部署 Worker 来更新此客户端行为。
+
+本地 Wrangler 子进程显式禁止从生产 .env 和进程环境加载开发变量，避免本地冒烟测试意外读取生产管理 Token。完整本地回归 62 项通过，包含会话变量纠正、权限恢复成功/失败、重复安装、卸载保护、HTTPS 标识、错误脱敏及响应确认。systemd 恢复使用替身测试，真实 Linux 安装器恢复仍需 VPS 验收；公开 CF 请求未使用真实节点凭据。
