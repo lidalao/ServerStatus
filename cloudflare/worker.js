@@ -264,7 +264,7 @@ async function scheduled(env) {
     }
   }
   if (changes.length) {
-    await sendTelegram(env, `<b>Server Status</b>\n${changes.join("\n")}`);
+    await sendTelegram(env, `<b>CF Server Status</b>\n${changes.join("\n")}`);
     for (const update of updates) await update.run();
   }
 }

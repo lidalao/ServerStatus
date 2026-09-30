@@ -62,7 +62,7 @@
     }
     if (v <= 0) return '-';
     var d = Math.floor(v / 86400), h = Math.floor((v % 86400) / 3600);
-    if (d > 0) return d + 'd ' + h + 'h';
+    if (d > 0) return d + 'd';
     var m = Math.floor((v % 3600) / 60);
     return h + 'h ' + m + 'm';
   }

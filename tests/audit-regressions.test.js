@@ -65,6 +65,7 @@ test('failed Telegram delivery retries hidden-node transitions and records only 
     succeed = true;
     await tick();
     assert.equal(state, 0);
+    assert.match(messages[1], /^<b>CF Server Status<\/b>\n/);
     assert.match(messages[1], /主机下线：&lt;hidden&gt;/);
     await tick();
     assert.equal(messages.length, 2, 'no repeated notification after success');
