@@ -16,7 +16,7 @@ This is a Cloudflare-only branch. Do not add Docker, a self-hosted backend, Go s
 - Node credentials (`username`, `password`) are the agent identity. Worker management uses a separate Bearer app token.
 - `hidden: true` only removes a node from the dashboard UI. It must not disable the probe or suppress offline notifications; leave hidden nodes in status data and filter them in the frontend.
 - The admin CLI sends the entire config with a revision number. Keep the compare-and-swap revision check to prevent silently overwriting another manager's edits.
-- Agent reports and dashboard polling default to 3 seconds, explicitly requested for observing real usage. Each report writes to D1. Two continuously reporting nodes plus one always-open dashboard generate about 86,400 dynamic requests/day; three nodes exceed Workers Free request limits. Keep quota implications documented; sampling on the VPS may remain more frequent.
+- Agent reports default to 15 seconds and dashboard polling to 10 seconds, following the 11-node quota observation. Each report writes to D1. Eleven continuously reporting nodes plus one always-open dashboard generate about 72,000 dynamic requests/day, excluding retries and other visitors/services. Keep quota implications documented; sampling on the VPS may remain more frequent.
 - Never commit `.env`, `config.json`, or `json/` runtime data.
 
 ## Validation

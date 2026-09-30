@@ -80,7 +80,7 @@ journalctl --user -u sss-agent -n 50 --no-pager
 
 Agent 明确使用 `ServerStatus-Agent/1.0` 标识访问上报 API，避免 Python 默认 User-Agent 被边缘规则误拒。HTTP 错误会记录状态、Cloudflare 错误码和 CF-Ray，不打印节点凭据或响应正文；如果上报接口被 Access 或 Challenge 保护，需要允许机器客户端正常访问。
 
-Agent 默认每 3 秒上报，网页每 3 秒刷新，当前用于实际用量观察。按持续上报与一个全天打开的网页估算，1 节点约 57,600 次动态请求/天，2 节点约 86,400 次，3 节点约 115,200 次，超过 Workers 免费请求额度；同时关注 D1 读写用量、失败重试和其他访客。旧安装若出现 SSH 退出后离线、重新登录后上线，请用安装 Agent 的同一用户执行 `sudo loginctl enable-linger "$(id -un)"`，并确认 `loginctl show-user "$(id -un)" -p Linger` 返回 `Linger=yes`。Agent 的原生 `/proc` 采集和 systemd 生命周期需在实际 Linux VPS 验证。
+Agent 默认每 15 秒上报，网页每 10 秒刷新。按 11 个节点持续上报和一个全天打开的网页估算，约 72,000 次动态请求/天；需要为失败重试、其他访客和同账号其他服务保留余量，并关注 D1 实际读写用量。增加到约 20 个节点时，建议将上报间隔提高至 30 秒。旧安装若出现 SSH 退出后离线、重新登录后上线，请用安装 Agent 的同一用户执行 `sudo loginctl enable-linger "$(id -un)"`，并确认 `loginctl show-user "$(id -un)" -p Linger` 返回 `Linger=yes`。Agent 的原生 `/proc` 采集和 systemd 生命周期需在实际 Linux VPS 验证。
 
 删除节点成功后，其上报会被拒绝；在 VPS 运行安装器菜单 **2** 可卸载服务。隐藏只影响网页展示，不停止上报或通知。下载的 `sss-agent.sh` 执行结束后自动删除自身（含安装、更新、卸载、取消及失败退出），不会删除已安装 Agent。再次操作需重新下载。安装器菜单 **1** 更新现有 Agent，保留凭据；下载失败不会破坏旧安装。安装器会将 GitHub 源保存在 Agent 目录内私有的 `.env`，后续更新复用该来源；显式设置 `GITHUB_RAW_URL` 可覆盖。下载后校验 Cloudflare 协议标记，旧 TCP Agent 不会替换当前 Agent。
 
@@ -98,7 +98,7 @@ npm run smoke:local
 SSS_WORKER_URL=http://127.0.0.1:8788 SSS_MANAGEMENT_TOKEN=local-test-token bash ./sss.sh
 ```
 
-首次准备四个模拟节点：可见在线/离线、隐藏在线/离线。在线节点每 3 秒模拟上报。数据保存在 `.wrangler/manual-state`，重启保留修改。Ctrl+C 停止；停止后移除此目录可重置手动测试数据。可用 `SSS_SMOKE_PORT=8789 npm run smoke:local` 修改端口。
+首次准备四个模拟节点：可见在线/离线、隐藏在线/离线。在线节点每 15 秒模拟上报。数据保存在 `.wrangler/manual-state`，重启保留修改。Ctrl+C 停止；停止后移除此目录可重置手动测试数据。可用 `SSS_SMOKE_PORT=8789 npm run smoke:local` 修改端口。
 
 自动测试使用单独临时 D1/Worker，覆盖节点 CRUD、隐藏、并发版本冲突、Python 上报和资源加载；部署流程的 CF API/发布使用替身验证，生成的生产配置使用真实 Wrangler dry-run 编译。不会操作真实账号。Linux service 控制使用替身，不能代替实际 VPS 验证。
 

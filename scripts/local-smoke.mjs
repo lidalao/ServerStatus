@@ -90,7 +90,7 @@ try {
     reporting = true;
     try { await heartbeat(); } catch (error) { console.error('Fixture heartbeat:', error.message); }
     finally { reporting = false; }
-  }, 3000);
+  }, 15000);
 } catch (error) {
   console.error(error);
   stop();

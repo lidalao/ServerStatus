@@ -316,5 +316,5 @@
   initTheme();
   initExpand();
   tick();
-  setInterval(tick, 3000);
+  setInterval(tick, 10000);
 })();
