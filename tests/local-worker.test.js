@@ -486,12 +486,18 @@ exec "$SSS_TEST_REAL_CURL" "\${args[@]}"
         SSS_TEST_AGENT_SOURCE: path.join(root, 'agent/client-linux.py'),
       },
     };
-    const legacy = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh'), 'localhost', 'user', 'pass'], installOptions);
+    const installerCopy = () => {
+      const filename = path.join(stateDir, 'sss-agent.sh');
+      fs.copyFileSync(path.join(root, 'agent/sss-agent.sh'), filename);
+      return filename;
+    };
+    const legacy = spawnSync('bash', [installerCopy(), 'localhost', 'user', 'pass'], installOptions);
     assert.notEqual(legacy.status, 0, 'TCP installation is no longer supported');
     assert.match(legacy.stdout, /用法:.*--worker/);
     assert.equal(fs.existsSync(path.join(agentHome, '.local/share/sss/agent')), false);
-    const install = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh'), '--worker', baseUrl, 'unpriv-user', 'unpriv-pass'], installOptions);
+    const install = spawnSync('bash', [installerCopy(), '--worker', baseUrl, 'unpriv-user', 'unpriv-pass'], installOptions);
     assert.equal(install.status, 0, `${install.stdout}\n${install.stderr}`);
+    assert.equal(fs.existsSync(path.join(stateDir, 'sss-agent.sh')), false, 'installer removes itself after success');
 
     const unitPath = path.join(agentHome, '.config/systemd/user/sss-agent.service');
     const agentPath = path.join(agentHome, '.local/share/sss/agent/client-linux.py');
@@ -505,9 +511,10 @@ exec "$SSS_TEST_REAL_CURL" "\${args[@]}"
     assert.equal(fs.existsSync(agentPath), true);
     assert.match(fs.readFileSync(serviceLog, 'utf8'), /--user enable --now sss-agent/);
     const savedAgent = fs.readFileSync(agentPath, 'utf8');
-    const update = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh')], { ...installOptions, env: { ...installOptions.env, GITHUB_RAW_URL: '' }, input: '1\n' });
+    const update = spawnSync('bash', [installerCopy()], { ...installOptions, env: { ...installOptions.env, GITHUB_RAW_URL: '' }, input: '1\n' });
     assert.equal(update.status, 0, update.stdout + update.stderr);
     assert.equal(fs.readFileSync(unitPath, 'utf8'), unit, 'update preserves credentials');
+    assert.equal(fs.existsSync(path.join(stateDir, 'sss-agent.sh')), false, 'update removes installer');
     assert.match(fs.readFileSync(serviceLog, 'utf8'), /--user restart sss-agent/);
     const sourceConfig = path.join(path.dirname(agentPath), '.env');
     assert.match(fs.readFileSync(sourceConfig, 'utf8'), /GITHUB_RAW_URL=.*test-release/);
@@ -518,7 +525,7 @@ exec "$SSS_TEST_REAL_CURL" "\${args[@]}"
     const managerReady = path.join(stateDir, 'agent-manager-ready');
     fs.writeFileSync(path.join(fakeBin, 'systemctl'), '#!/bin/sh\n[ "$1" = --user ] || exit 99\n[ "$XDG_RUNTIME_DIR" = "/run/user/$(id -u)" ] || exit 98\ncase "$DBUS_SESSION_BUS_ADDRESS" in ""|"unix:path=$XDG_RUNTIME_DIR/bus") ;; *) exit 97 ;; esac\n[ -f "$SSS_TEST_MANAGER_READY" ] || exit 1\nprintf "%s\\n" "$*" >> "$SSS_TEST_SYSTEMCTL_LOG"\n', { mode: 0o755 });
     fs.writeFileSync(path.join(fakeBin, 'loginctl'), '#!/bin/sh\n[ "$1" = --no-ask-password ] && [ "$2" = enable-linger ] && [ "$3" = "$(id -un)" ] || exit 99\ntouch "$SSS_TEST_MANAGER_READY"\n', { mode: 0o755 });
-    const recoveredInstall = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh'), '--worker', baseUrl, 'unpriv-user', 'unpriv-pass'], {
+    const recoveredInstall = spawnSync('bash', [installerCopy(), '--worker', baseUrl, 'unpriv-user', 'unpriv-pass'], {
       ...installOptions, env: { ...installOptions.env, XDG_RUNTIME_DIR: '/run/user/foreign', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/foreign/bus', SSS_TEST_MANAGER_READY: managerReady },
     });
     assert.equal(recoveredInstall.status, 0, recoveredInstall.stdout + recoveredInstall.stderr);
@@ -528,15 +535,16 @@ exec "$SSS_TEST_REAL_CURL" "\${args[@]}"
 
     const obsoleteSource = path.join(stateDir, 'obsolete-agent.py');
     fs.writeFileSync(obsoleteSource, '# old TCP Agent\nprint("Connecting...")\n');
-    const rejected = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh'), '--worker', baseUrl, 'new-user', 'new-pass'], {
+    const rejected = spawnSync('bash', [installerCopy(), '--worker', baseUrl, 'new-user', 'new-pass'], {
       ...installOptions, env: { ...installOptions.env, SSS_TEST_AGENT_SOURCE: obsoleteSource },
     });
     assert.notEqual(rejected.status, 0, 'old TCP Agent download cannot replace the HTTPS Agent');
     assert.equal(fs.readFileSync(agentPath, 'utf8'), savedAgent);
     assert.equal(fs.readFileSync(unitPath, 'utf8'), unit);
     fs.writeFileSync(path.join(fakeBin, 'wget'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
-    const failedUpdate = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh'), '--worker', baseUrl, 'new-user', 'new-pass'], installOptions);
+    const failedUpdate = spawnSync('bash', [installerCopy(), '--worker', baseUrl, 'new-user', 'new-pass'], installOptions);
     assert.notEqual(failedUpdate.status, 0);
+    assert.equal(fs.existsSync(path.join(stateDir, 'sss-agent.sh')), false, 'failed update removes installer');
     assert.equal(fs.readFileSync(agentPath, 'utf8'), savedAgent);
     assert.equal(fs.readFileSync(unitPath, 'utf8'), unit);
     assert.doesNotMatch(fs.readFileSync(serviceLog, 'utf8'), /disable/);
@@ -544,12 +552,12 @@ exec "$SSS_TEST_REAL_CURL" "\${args[@]}"
     fs.writeFileSync(path.join(fakeBin, 'loginctl'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     fs.writeFileSync(path.join(fakeBin, 'sudo'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     fs.writeFileSync(path.join(fakeBin, 'systemctl'), '#!/bin/sh\necho "Failed to connect to bus: Permission denied" >&2\nexit 1\n', { mode: 0o755 });
-    const unavailable = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh'), '--worker', baseUrl, 'new-user', 'new-pass'], installOptions);
+    const unavailable = spawnSync('bash', [installerCopy(), '--worker', baseUrl, 'new-user', 'new-pass'], installOptions);
     assert.notEqual(unavailable.status, 0);
     assert.match(unavailable.stdout, /loginctl enable-linger/);
     assert.equal(fs.readFileSync(agentPath, 'utf8'), savedAgent);
     assert.equal(fs.readFileSync(unitPath, 'utf8'), unit);
-    const refusedRemoval = spawnSync('bash', [path.join(root, 'agent/sss-agent.sh')], { ...installOptions, input: '2\n' });
+    const refusedRemoval = spawnSync('bash', [installerCopy()], { ...installOptions, input: '2\n' });
     assert.notEqual(refusedRemoval.status, 0);
     assert.doesNotMatch(refusedRemoval.stdout, /卸载Agent完成/);
     assert.equal(fs.readFileSync(agentPath, 'utf8'), savedAgent);

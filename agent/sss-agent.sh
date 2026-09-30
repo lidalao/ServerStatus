@@ -4,6 +4,20 @@
 # Target: Linux VPS (Ubuntu/Debian), Python 3 and systemd user services.
 # Node administration runs separately via sss.sh on a management machine.
 
+# The downloaded installer is disposable. Resolve its path before any work,
+# and preserve the operation's exit status when removing only this script.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    SSS_INSTALLER_FILE="$(cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")"
+    cleanup_installer() {
+        local result=$?
+        rm -f -- "$SSS_INSTALLER_FILE" || echo "无法删除安装脚本，请手动删除: $SSS_INSTALLER_FILE" >&2
+        return "$result"
+    }
+    trap cleanup_installer EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+fi
+
 SSS_AGENT_PATH="$HOME/.local/share/sss/agent"
 SSS_AGENT_SERVICE="$HOME/.config/systemd/user/sss-agent.service"
 # An explicit source overrides the source saved by the previous installation.

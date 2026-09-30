@@ -16,19 +16,24 @@ function fixture(t, uid) {
   fs.writeFileSync(path.join(bin, 'id'), `#!/bin/sh\ncase "$1" in -u) echo ${uid} ;; -un) echo fixture-user ;; *) exit 1 ;; esac\n`, { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'systemctl'), '#!/bin/sh\n[ "$1" = --user ] || exit 99\nprintf "service %s\\n" "$*" >> "$SSS_TEST_LOG"\n', { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'wget'), '#!/bin/sh\nprintf "download\\n" >> "$SSS_TEST_LOG"\ncase "$3" in */client-linux.py) cp "$SSS_TEST_PYTHON" "$2" ;; */sss-agent.service) cp "$SSS_TEST_UNIT" "$2" ;; *) exit 1 ;; esac\n', { mode: 0o755 });
-  const script = path.join(directory, 'installer.sh');
+  const script = path.join(directory, 'sss-agent.sh');
   // Model UID selection without using real root or a real Linux user manager.
-  fs.writeFileSync(script, fs.readFileSync(path.join(root, 'agent/sss-agent.sh'), 'utf8')
-    .replace('local runtime="/run/user/$(id -u)"', 'local runtime="$SSS_TEST_RUNTIME"'));
+  const source = fs.readFileSync(path.join(root, 'agent/sss-agent.sh'), 'utf8')
+    .replace('local runtime="/run/user/$(id -u)"', 'local runtime="$SSS_TEST_RUNTIME"');
   const unit = path.join(directory, '.config/systemd/user/sss-agent.service');
   const client = path.join(directory, '.local/share/sss/agent/client-linux.py');
-  return { directory, unit, client, log, run: (input, args = ['--worker', 'https://example.test', 'fixture-user', 'fixture-password']) => spawnSync('bash', [script, ...args], {
+  return { directory, unit, client, log, run: (input, args = ['--worker', 'https://example.test', 'fixture-user', 'fixture-password']) => {
+    fs.writeFileSync(script, source);
+    const result = spawnSync('bash', [script, ...args], {
     encoding: 'utf8', input,
     env: { ...process.env, HOME: directory, PATH: `${bin}:${process.env.PATH}`,
       GITHUB_RAW_URL: 'https://raw.githubusercontent.com/example/repo/test',
       SSS_TEST_LOG: log, SSS_TEST_RUNTIME: runtime,
       SSS_TEST_PYTHON: path.join(root, 'agent/client-linux.py'), SSS_TEST_UNIT: path.join(root, 'agent/sss-agent.service') },
-  }) };
+    });
+    assert.equal(fs.existsSync(script), false, 'installer is deleted on every exit, including rejection');
+    return result;
+  } };
 }
 
 test('ordinary user installs without a root prompt or elevation', t => {
@@ -83,4 +88,17 @@ test('root menu update requires a new confirmation and preserves installation on
   assert.match(update.stdout, /确认以 root/);
   assert.equal(fs.readFileSync(f.unit, 'utf8'), unit, 'update retains node credentials');
   assert.notEqual(fs.readFileSync(f.log, 'utf8'), log);
+});
+
+
+test('Agent installer removes itself on exit and uninstall without deleting unrelated files', t => {
+  const f = fixture(t, 1000);
+  const unrelated = path.join(f.directory, 'keep.txt');
+  fs.writeFileSync(unrelated, 'preserve');
+  assert.equal(f.run('').status, 0);
+  assert.equal(f.run('0\n', []).status, 0);
+  assert.ok(fs.existsSync(f.client), 'menu exit does not uninstall Agent');
+  assert.equal(f.run('2\n', []).status, 0);
+  assert.equal(fs.existsSync(f.client), false);
+  assert.equal(fs.readFileSync(unrelated, 'utf8'), 'preserve');
 });
