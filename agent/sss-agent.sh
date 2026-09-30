@@ -139,6 +139,37 @@ ensure_user_manager() {
     return 1
 }
 
+user_linger_enabled() {
+    [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" = yes ]
+}
+
+ensure_user_linger() {
+    local username administrator=()
+    username=$(id -un)
+    command -v loginctl >/dev/null 2>&1 || {
+        echo "未找到 loginctl，无法确认 Agent 在注销后持续运行；未修改安装"
+        return 1
+    }
+    user_linger_enabled && return 0
+    echo "正在启用当前用户 linger，确保 Agent 在 SSH 退出和重启后继续运行…"
+    if loginctl --no-ask-password enable-linger "$username" >/dev/null 2>&1 && user_linger_enabled; then
+        return 0
+    fi
+    if [ "$(id -u)" -ne 0 ]; then
+        command -v sudo >/dev/null 2>&1 || {
+            echo "无法启用 linger，请主机管理员执行: loginctl enable-linger $username；未修改安装"
+            return 1
+        }
+        echo "启用 linger 需要一次 sudo 主机授权；Agent 仍以当前用户运行。"
+        administrator=(sudo)
+    fi
+    if "${administrator[@]}" loginctl enable-linger "$username" && user_linger_enabled; then
+        return 0
+    fi
+    echo "无法确认 Linger=yes；为避免 SSH 退出后停止上报，未修改安装。"
+    return 1
+}
+
 activate_user_service() {
     ensure_user_manager || return 1
     systemctl --user enable --now sss-agent && systemctl --user restart sss-agent || {
@@ -196,6 +227,7 @@ install_agent() {
         return 1
     fi
     ensure_user_manager || return 1
+    ensure_user_linger || return 1
     local stage destination_service="$SSS_AGENT_SERVICE"
     stage=$(mktemp -d) || return 1
     chmod 0700 "$stage"

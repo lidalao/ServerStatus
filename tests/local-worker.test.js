@@ -460,6 +460,7 @@ exec "$SSS_TEST_REAL_CURL" "\${args[@]}"
     const serviceLog = path.join(stateDir, 'systemctl.log');
     fs.mkdirSync(fakeBin, { recursive: true });
     fs.mkdirSync(agentHome, { recursive: true });
+    fs.writeFileSync(path.join(fakeBin, 'loginctl'), '#!/bin/sh\n[ "$1" = show-user ] || exit 99\necho yes\n', { mode: 0o755 });
     fs.writeFileSync(path.join(fakeBin, 'systemctl'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$SSS_TEST_SYSTEMCTL_LOG"\n', { mode: 0o755 });
     fs.writeFileSync(path.join(fakeBin, 'wget'), [
       '#!/bin/sh',
@@ -524,7 +525,7 @@ exec "$SSS_TEST_REAL_CURL" "\${args[@]}"
     assert.doesNotMatch(downloads, /ServerStatus\/master/);
     const managerReady = path.join(stateDir, 'agent-manager-ready');
     fs.writeFileSync(path.join(fakeBin, 'systemctl'), '#!/bin/sh\n[ "$1" = --user ] || exit 99\n[ "$XDG_RUNTIME_DIR" = "/run/user/$(id -u)" ] || exit 98\ncase "$DBUS_SESSION_BUS_ADDRESS" in ""|"unix:path=$XDG_RUNTIME_DIR/bus") ;; *) exit 97 ;; esac\n[ -f "$SSS_TEST_MANAGER_READY" ] || exit 1\nprintf "%s\\n" "$*" >> "$SSS_TEST_SYSTEMCTL_LOG"\n', { mode: 0o755 });
-    fs.writeFileSync(path.join(fakeBin, 'loginctl'), '#!/bin/sh\n[ "$1" = --no-ask-password ] && [ "$2" = enable-linger ] && [ "$3" = "$(id -un)" ] || exit 99\ntouch "$SSS_TEST_MANAGER_READY"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, 'loginctl'), '#!/bin/sh\nif [ "$1" = show-user ]; then echo yes; exit 0; fi\n[ "$1" = --no-ask-password ] && [ "$2" = enable-linger ] && [ "$3" = "$(id -un)" ] || exit 99\ntouch "$SSS_TEST_MANAGER_READY"\n', { mode: 0o755 });
     const recoveredInstall = spawnSync('bash', [installerCopy(), '--worker', baseUrl, 'unpriv-user', 'unpriv-pass'], {
       ...installOptions, env: { ...installOptions.env, XDG_RUNTIME_DIR: '/run/user/foreign', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/foreign/bus', SSS_TEST_MANAGER_READY: managerReady },
     });

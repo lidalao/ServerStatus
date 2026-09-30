@@ -69,7 +69,7 @@ SSS_MANAGEMENT_TOKEN=部署机器.env中的管理Token
 
 运行 `bash ./sss.sh`：菜单 **2** 添加、**3** 删除、**4** 修改、**5** 切换 Web 隐藏状态。启动时读取一次远端配置，之后查看、输入和校验均操作本地临时文件；所有修改在最后一步自动提交到远端，确认成功后才显示结果。查看、取消和无效输入不发起网络请求。其他管理机的修改由提交时的 revision 检查发现；需要查看最新远端配置时重新启动 CLI。提交使用 revision CAS，防止覆盖另一台管理机器的修改。提交失败会重新读取远端状态，不显示成功或未注册节点的安装命令。
 
-添加成功后，复制脚本打印的完整命令到 VPS。普通用户直接执行，以该用户安装和运行；root 执行时会先询问确认，输入 `y` 后才以 root 安装和运行，回车、拒绝或无输入均取消。每次 root 安装或更新都需确认。命令包含节点凭据和相同 GitHub 源；Agent 以当前用户运行，不需要 Docker。若用户 systemd manager 尚未启动，安装器会自动修复；主机策略可能要求一次 sudo 授权以启用当前用户的 linger 和 manager。Agent 位于 `~/.local/share/sss/agent`，用户 service 位于 `~/.config/systemd/user/sss-agent.service`。
+添加成功后，复制脚本打印的完整命令到 VPS。普通用户直接执行，以该用户安装和运行；root 执行时会先询问确认，输入 `y` 后才以 root 安装和运行，回车、拒绝或无输入均取消。每次 root 安装或更新都需确认。命令包含节点凭据和相同 GitHub 源；Agent 以当前用户运行，不需要 Docker。安装器每次安装/更新都会确认当前用户 `Linger=yes`，保证注销后继续运行并随开机启动；即使 SSH 会话中的 manager 已正常运行，也不会跳过此检查。主机策略可能要求一次 sudo 授权以启用当前用户的 linger 或修复 manager。Agent 位于 `~/.local/share/sss/agent`，用户 service 位于 `~/.config/systemd/user/sss-agent.service`。
 
 ```bash
 systemctl --user status sss-agent
@@ -80,7 +80,7 @@ journalctl --user -u sss-agent -n 50 --no-pager
 
 Agent 明确使用 `ServerStatus-Agent/1.0` 标识访问上报 API，避免 Python 默认 User-Agent 被边缘规则误拒。HTTP 错误会记录状态、Cloudflare 错误码和 CF-Ray，不打印节点凭据或响应正文；如果上报接口被 Access 或 Challenge 保护，需要允许机器客户端正常访问。
 
-Agent 默认每 3 秒上报，网页每 3 秒刷新，当前用于实际用量观察。按持续上报与一个全天打开的网页估算，1 节点约 57,600 次动态请求/天，2 节点约 86,400 次，3 节点约 115,200 次，超过 Workers 免费请求额度；同时关注 D1 读写用量、失败重试和其他访客。用户 manager 和注销/重启后存活取决于 VPS 主机策略，必要时主机管理员需启用 linger。Agent 的原生 `/proc` 采集和 systemd 生命周期需在实际 Linux VPS 验证。
+Agent 默认每 3 秒上报，网页每 3 秒刷新，当前用于实际用量观察。按持续上报与一个全天打开的网页估算，1 节点约 57,600 次动态请求/天，2 节点约 86,400 次，3 节点约 115,200 次，超过 Workers 免费请求额度；同时关注 D1 读写用量、失败重试和其他访客。旧安装若出现 SSH 退出后离线、重新登录后上线，请用安装 Agent 的同一用户执行 `sudo loginctl enable-linger "$(id -un)"`，并确认 `loginctl show-user "$(id -un)" -p Linger` 返回 `Linger=yes`。Agent 的原生 `/proc` 采集和 systemd 生命周期需在实际 Linux VPS 验证。
 
 删除节点成功后，其上报会被拒绝；在 VPS 运行安装器菜单 **2** 可卸载服务。隐藏只影响网页展示，不停止上报或通知。下载的 `sss-agent.sh` 执行结束后自动删除自身（含安装、更新、卸载、取消及失败退出），不会删除已安装 Agent。再次操作需重新下载。安装器菜单 **1** 更新现有 Agent，保留凭据；下载失败不会破坏旧安装。安装器会将 GitHub 源保存在 Agent 目录内私有的 `.env`，后续更新复用该来源；显式设置 `GITHUB_RAW_URL` 可覆盖。下载后校验 Cloudflare 协议标记，旧 TCP Agent 不会替换当前 Agent。
 
