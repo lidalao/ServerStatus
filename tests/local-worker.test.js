@@ -331,6 +331,47 @@ test('local Cloudflare Worker and dashboard acceptance cases', async (t) => {
     assert.equal(result.config.servers.some((server) => server.username === username), false, 'delete is committed to D1');
   });
 
+  await t.test('CLI uses one initial GET and only final PUTs throughout local node interactions', async () => {
+    const before = await remoteConfig();
+    const fakeBin = path.join(stateDir, 'local-interaction-curl');
+    const requestLog = path.join(stateDir, 'local-interaction-requests.log');
+    fs.mkdirSync(fakeBin);
+    const realCurl = spawnSync('which', ['curl'], { encoding: 'utf8' }).stdout.trim();
+    fs.writeFileSync(path.join(fakeBin, 'curl'), `#!/bin/bash
+method=GET
+previous=''
+for argument in "$@"; do
+  [ "$previous" != -X ] || method="$argument"
+  previous="$argument"
+done
+printf '%s\\n' "$method" >> "$SSS_TEST_REQUEST_LOG"
+exec "$SSS_TEST_REAL_CURL" "$@"
+`, { mode: 0o755 });
+    const index = String(before.config.servers.length);
+    const input = [
+      '1', '0', '',                         // view locally
+      '4', '0', '', '', '', '', '',        // unchanged update stays local
+      '3', '0', 'n', '',                   // cancelled deletion stays local
+      '2', 'visible-online', '',           // rejected duplicate stays local
+      '2', 'zz-cli-local', 'ZZ', 'kvm', '', // add: one PUT
+      '1', index, '',                      // view newly saved node locally
+      '5', index, '',                      // toggle: one PUT
+      '4', index, '', 'CA', '', '', '',     // metadata update: one PUT
+      '3', index, 'y', '',                 // delete: one PUT
+      '0', '',
+    ].join('\n');
+    const result = runCli(input, {
+      PATH: `${fakeBin}:${process.env.PATH}`, SSS_TEST_REAL_CURL: realCurl, SSS_TEST_REQUEST_LOG: requestLog,
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const requests = fs.readFileSync(requestLog, 'utf8').trim().split('\n');
+    assert.deepEqual(requests, ['GET', 'PUT', 'PUT', 'PUT', 'PUT'],
+      'viewing, prompts, validation, menus and successful writes must not cause extra reads');
+    const after = await remoteConfig();
+    assert.equal(after.revision, before.revision + 4, 'success revisions are reused for subsequent writes');
+    assert.deepEqual(after.config, before.config);
+  });
+
   await t.test('automatic node submission failures reconcile remote state without printing installation commands', async () => {
     const fakeBin = path.join(stateDir, 'submit-curl-bin');
     fs.mkdirSync(fakeBin);

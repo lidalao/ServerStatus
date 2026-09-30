@@ -139,7 +139,7 @@ submit_remote_config() {
 
 # ================= 节点管理(自动远程提交) =================
 ensure_config() {
-    load_remote_config || { err "无法刷新远端配置，停止操作"; exit 1; }
+    [ -s "$CONFIG_FILE" ] || { err "本地会话配置不可用，请重新启动管理 CLI"; exit 1; }
 }
 
 gen_user() {
