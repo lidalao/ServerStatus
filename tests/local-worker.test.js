@@ -279,7 +279,7 @@ test('local Cloudflare Worker and dashboard acceptance cases', async (t) => {
   });
 
   await t.test('local CLI hide toggle submits to D1 and preserves node management workflow', async () => {
-    const cli = runCli('5\n1\n\n6\n\n0\n');
+    const cli = runCli('5\n1\n\n0\n');
     assert.equal(cli.status, 0, `${cli.stdout}\n${cli.stderr}`);
     const afterCli = await fetch(`${baseUrl}/api/admin/config`, { headers });
     const managedConfig = await afterCli.json();
@@ -288,7 +288,7 @@ test('local Cloudflare Worker and dashboard acceptance cases', async (t) => {
   });
 
   await t.test('standalone sss.sh can add, view, update, and delete Worker nodes', async () => {
-    const add = runCli('2\ncli-added\nZZ\nkvm\n\n6\n\n0\n');
+    const add = runCli('2\ncli-added\nZZ\nkvm\n\n0\n');
     assert.equal(add.status, 0, `${add.stdout}\n${add.stderr}`);
     assert.doesNotMatch(add.stdout, /部署\/更新 CF Web/);
     assert.match(add.stdout, /curl -fsSL https:\/\/raw\.githubusercontent\.com\/lidalao\/ServerStatus\/feature\/cloudflare-monitor\/agent\/sss-agent\.sh/, 'new node prints the GitHub-hosted Agent installer command');
@@ -296,14 +296,17 @@ test('local Cloudflare Worker and dashboard acceptance cases', async (t) => {
     let result = await remoteConfig();
     assert.equal(result.revision, 3);
     let node = result.config.servers.find((server) => server.name === 'cli-added');
-    assert.ok(node, 'new node is submitted from a standalone copy with no repo/Docker checkout');
+    assert.ok(node, 'new node is automatically submitted from a standalone copy');
+    assert.ok(add.stdout.indexOf('已提交到 Cloudflare') < add.stdout.indexOf('添加成功'), 'success follows remote confirmation');
+    assert.ok(add.stdout.indexOf('已提交到 Cloudflare') < add.stdout.indexOf('curl -fsSL'), 'installation command follows remote confirmation');
+    assert.doesNotMatch(add.stdout.replace(/\x1b\[[0-9;]*m/g, ''), /6\. 提交到 Cloudflare|使用菜单 6/);
     assert.equal(node.location, 'ZZ');
     assert.equal(node.host, 'cli-added');
     assert.ok(node.username && node.password, 'CLI generates credentials required by its Agent');
     const username = node.username;
 
     let index = result.config.servers.findIndex((server) => server.name === 'cli-added');
-    const update = runCli(`4\n${index}\ncli-updated\nCA\n\n5\n\n6\n\n0\n`);
+    const update = runCli(`4\n${index}\ncli-updated\nCA\n\n5\n\n0\n`);
     assert.equal(update.status, 0, `${update.stdout}\n${update.stderr}`);
     result = await remoteConfig();
     assert.equal(result.revision, 4);
@@ -318,13 +321,58 @@ test('local Cloudflare Worker and dashboard acceptance cases', async (t) => {
     const view = runCli(`1\n${index}\n\n0\n`);
     assert.equal(view.status, 0, `${view.stdout}\n${view.stderr}`);
     assert.match(view.stdout, /cli-updated/);
+    assert.equal((await remoteConfig()).revision, result.revision, 'view does not submit configuration');
     assert.match(view.stdout, /curl -fsSL https:\/\/raw\.githubusercontent\.com\/lidalao\/ServerStatus\/feature\/cloudflare-monitor\/agent\/sss-agent\.sh/, 'view command can recover/reprint the GitHub-hosted Agent setup instruction');
 
-    const remove = runCli(`3\n${index}\ny\n\n6\n\n0\n`);
+    const remove = runCli(`3\n${index}\ny\n\n0\n`);
     assert.equal(remove.status, 0, `${remove.stdout}\n${remove.stderr}`);
     result = await remoteConfig();
     assert.equal(result.revision, 5);
     assert.equal(result.config.servers.some((server) => server.username === username), false, 'delete is committed to D1');
+  });
+
+  await t.test('automatic node submission failures reconcile remote state without printing installation commands', async () => {
+    const fakeBin = path.join(stateDir, 'submit-curl-bin');
+    fs.mkdirSync(fakeBin);
+    const realCurl = spawnSync('which', ['curl'], { encoding: 'utf8' }).stdout.trim();
+    fs.writeFileSync(path.join(fakeBin, 'curl'), `#!/bin/bash
+args=("$@")
+put=false
+for arg in "$@"; do [ "$arg" != PUT ] || put=true; done
+if $put; then
+  case "$SSS_TEST_SUBMIT_MODE" in
+    rejected) printf '%s' '{"error":"Unauthorized"}'; exit 0 ;;
+    network) exit 28 ;;
+    conflict)
+      for ((i=0;i<$#;i++)); do
+        if [ "\${args[$i]}" = --data-binary ]; then
+          j=$((i+1)); args[$j]=$(printf '%s' "\${args[$j]}" | jq '.revision -= 1')
+        fi
+      done
+      ;;
+    committed-timeout) "$SSS_TEST_REAL_CURL" "$@" >/dev/null; exit 28 ;;
+  esac
+fi
+exec "$SSS_TEST_REAL_CURL" "\${args[@]}"
+`, { mode: 0o755 });
+    for (const mode of ['rejected', 'network', 'conflict', 'committed-timeout']) {
+      const before = await remoteConfig();
+      const name = `failed-${mode}`;
+      const result = runCli(`2\n${name}\nZZ\nkvm\n\n0\n`, {
+        PATH: `${fakeBin}:${process.env.PATH}`, SSS_TEST_REAL_CURL: realCurl, SSS_TEST_SUBMIT_MODE: mode,
+      });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.match(result.stdout, /操作未确认成功，已恢复远端配置/);
+      assert.doesNotMatch(result.stdout, /添加成功|curl -fsSL|已提交到 Cloudflare/);
+      const after = await remoteConfig();
+      if (mode === 'committed-timeout') {
+        assert.equal(after.revision, before.revision + 1, 'server commit can precede a lost response');
+        assert.ok(after.config.servers.some(node => node.name === name));
+        assert.equal((await putConfig(after.revision, before.config)).status, 200);
+      } else {
+        assert.deepEqual(after, before, 'failed mutation must not change remote configuration');
+      }
+    }
   });
 
   await t.test('Linux Agent report function submits authenticated metrics to the Worker', async () => {

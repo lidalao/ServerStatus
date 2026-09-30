@@ -25,6 +25,21 @@ pre_check() {
     command -v python3 >/dev/null 2>&1 || { echo "缺少 python3，请联系 VPS 管理员安装"; exit 1; }
 }
 
+confirm_root_install() {
+    [ "$(id -u)" -eq 0 ] || return 0
+    local answer
+    echo "当前以 root 执行；继续后 Agent 将安装在 root 的用户目录，并以 root 权限运行。"
+    printf '确认以 root 安装/更新 Agent? [y/N]: '
+    if ! read -r answer; then
+        echo "未收到确认，已取消安装；现有安装未修改"
+        return 1
+    fi
+    case "$answer" in
+        y|Y|yes|YES) return 0 ;;
+        *) echo "已取消安装；现有安装未修改"; return 1 ;;
+    esac
+}
+
 install_base() {
     if ! command -v wget >/dev/null 2>&1 && ! command -v curl >/dev/null 2>&1; then
         echo "缺少 wget/curl，请在 VPS 上安装其中一个下载工具"
@@ -159,6 +174,7 @@ PY
 }
 
 install_agent() {
+    confirm_root_install || return 1
     local download_base="$GITHUB_RAW_URL/agent"
     install_base || return 1
     if [ $# -eq 0 ] && [ ! -f "$SSS_AGENT_SERVICE" ]; then

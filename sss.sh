@@ -45,7 +45,7 @@ SSS_WORKER_URL="${SSS_WORKER_URL:-}"
 SSS_MANAGEMENT_TOKEN="${SSS_MANAGEMENT_TOKEN:-}"
 export GITHUB_RAW_URL SSS_WORKER_URL SSS_MANAGEMENT_TOKEN
 
-# 会话内编辑草稿，只有显式提交才写入 Worker。
+# 临时配置用于单次编辑；每次完整操作自动提交到 Worker。
 CONFIG_FILE=$(mktemp) || exit 1
 trap 'rm -f "$CONFIG_FILE"' EXIT
 
@@ -78,7 +78,7 @@ err()  { printf '%s\n' "${red}[✗]${plain} $*"; }
 ask()  { printf '%s' "${cyan}»${plain} $* "; }
 read_input() {
     if ! read -r "$1"; then
-        warn "输入已结束，退出管理会话；未提交草稿不会写入远程。"
+        warn "输入已结束，退出管理会话；未完成的操作不会写入远程。"
         exit 0
     fi
 }
@@ -133,20 +133,13 @@ submit_remote_config() {
         return 0
     fi
     err "远程拒绝提交: $(printf '%s' "$response" | jq -r '.error // "unknown error"' 2>/dev/null)"
-    if printf '%s' "$response" | jq -e '.revision != null' >/dev/null 2>&1; then
-        warn "远程配置已被其他机器更新。当前草稿保留；请复制/备份后重新拉取并合并。"
-        ask "现在拉取远程版本并放弃当前草稿? [y/N]"; read_input yn
-        case "$yn" in
-            y|Y) load_remote_config && ok "已载入最新远程配置" ;;
-            *) warn "草稿仍在当前会话中，尚未提交" ;;
-        esac
-    fi
+    warn "本次操作未确认成功，正在重新读取远端配置；不会覆盖其他机器的修改。"
     return 1
 }
 
-# ================= 节点管理(本地草稿 + 远程提交) =================
+# ================= 节点管理(自动远程提交) =================
 ensure_config() {
-    [ -f "$CONFIG_FILE" ] || { err "会话草稿不可用，请重新启动管理 CLI"; exit 1; }
+    load_remote_config || { err "无法刷新远端配置，停止操作"; exit 1; }
 }
 
 gen_user() {
@@ -171,16 +164,23 @@ gen_pass() {
     printf '%s' "$out"
 }
 
-mark_dirty() {
+save_node_change() {
     DIRTY=1
-    info "修改已保存在本地草稿；使用菜单 6 显式提交到 Cloudflare"
+    if submit_remote_config; then
+        return 0
+    fi
+    # A timeout may happen after the server committed. Always reconcile with
+    # the remote state, never show success or retain an uncommitted local node.
+    load_remote_config || { err "无法确认远端状态，已停止会话；请恢复网络后重新查看节点"; exit 1; }
+    err "操作未确认成功，已恢复远端配置；请查看节点后重试"
+    return 1
 }
 
 print_agent_cmd() {
     local user="$1" pass="$2"
     echo
     line
-    warn "请先用菜单 6 提交新节点，再在目标 VPS 执行安装命令。"
+    info "节点已保存到远端，可在目标 VPS 执行安装命令。"
     printf '%s' "$green"
     printf 'curl -fsSL %q -o sss-agent.sh && GITHUB_RAW_URL=%q bash ./sss-agent.sh --worker %q %q %q\n' \
         "${GITHUB_RAW_URL}/agent/sss-agent.sh" "$GITHUB_RAW_URL" "$SSS_WORKER_URL" "$user" "$pass"
@@ -266,8 +266,8 @@ add_node() {
        '.servers += [{monthstart:"1",location:$loc,type:$type,name:$name,username:$user,host:$name,password:$pass}] | .servers |= sort_by(.name)' \
        "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE" || { err "写入 config.json 失败"; rm -f "$tmp"; return; }
 
+    save_node_change || return 1
     ok "添加成功: ${bold}${name}${plain}"
-    mark_dirty
     list_nodes
     echo
     info "请复制以下命令在机器 ${bold}${name}${plain} 安装 agent 服务:"
@@ -292,8 +292,8 @@ remove_node() {
     esac
     tmp=$(mktemp)
     jq "del(.servers[$idx])" "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE" || { err "写入失败"; rm -f "$tmp"; return; }
+    save_node_change || return 1
     ok "删除成功: ${bold}${name}${plain}"
-    mark_dirty
     list_nodes
 }
 
@@ -330,8 +330,8 @@ update_node() {
        ".servers[$idx].name=\$n | .servers[$idx].location=\$l | .servers[$idx].type=\$t | .servers[$idx].monthstart=\$m | .servers |= sort_by(.name)" \
        "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE" || { err "写入失败"; rm -f "$tmp"; return; }
 
+    save_node_change || return 1
     ok "更新成功"
-    mark_dirty
     list_nodes
 }
 
@@ -351,8 +351,8 @@ toggle_node_hidden() {
     tmp=$(mktemp)
     jq --argjson h "$hidden" ".servers[$idx].hidden=\$h" "$CONFIG_FILE" > "$tmp" \
         && mv "$tmp" "$CONFIG_FILE" || { err "更新隐藏状态失败"; rm -f "$tmp"; return; }
+    save_node_change || return 1
     ok "节点 ${bold}${name}${plain} 已设为${label}"
-    mark_dirty
     list_nodes
 }
 
@@ -368,9 +368,6 @@ menu_loop() {
         printf '%s\n' "    ${green}1${plain}. 查看节点      ${green}2${plain}. 添加节点"
         printf '%s\n' "    ${green}3${plain}. 删除节点      ${green}4${plain}. 更新节点"
         printf '%s\n' "    ${green}5${plain}. 切换 Web 隐藏状态"
-        local pending_mark=""
-        [[ "$DIRTY" -eq 1 ]] && pending_mark=" ${yellow}* 未提交${plain}"
-        printf '%s\n' "    ${green}6${plain}. 提交到 Cloudflare${pending_mark}"
         printf '%s\n' "    ${green}0${plain}. 退出"
         echo
         ask "请输入操作编号:"; read_input op
@@ -380,25 +377,7 @@ menu_loop() {
             3) remove_node; pause ;;
             4) update_node; pause ;;
             5) toggle_node_hidden; pause ;;
-            6) submit_remote_config; pause ;;
-            0)
-                if [[ "$DIRTY" -eq 1 ]]; then
-                    ask "还有未提交的修改。现在提交? [y/N]"; read_input yn
-                    case "$yn" in
-                        y|Y)
-                            if submit_remote_config; then
-                                echo; ok "再见 👋"; exit 0
-                            fi
-                            pause
-                            continue
-                            ;;
-                        *)
-                            ask "放弃草稿并退出? [y/N]"; read_input yn
-                            case "$yn" in y|Y) ;; *) continue ;; esac
-                            ;;
-                    esac
-                fi
-                echo; ok "再见 👋"; exit 0 ;;
+            0) echo; ok "再见 👋"; exit 0 ;;
             *) echo; err "无效输入，已退出"; exit 1 ;;
         esac
     done
@@ -632,14 +611,15 @@ show_help() {
 
 节点管理菜单（运行时不带命令）
   1 查看节点             查看配置和 VPS Agent 安装命令。
-  2 添加节点             生成节点凭据，加入本地草稿；提交后在 VPS 安装 Agent。
-  3 删除节点             从草稿删除；提交后该节点上报将被拒绝。
+  2 添加节点             自动保存到远端，成功后显示 VPS Agent 安装命令。
+  3 删除节点             确认后自动保存到远端，该节点上报将被拒绝。
                          VPS 上已有 Agent 需另行使用安装器卸载。
   4 更新节点             修改名字、位置、类型、月流量起始日（1–31）。
   5 切换 Web 隐藏状态    仅影响网页显示，离线节点也隐藏；上报和通知继续运行。
-  6 提交到 Cloudflare    将当前草稿提交远端；版本冲突不会覆盖他人修改。
-  0 退出                 有未提交修改时可选择提交或放弃。
-  添加、删除、修改、隐藏均先改本地草稿，使用 6 才写入远端。
+  0 退出                 退出节点管理。
+  添加、删除、修改、隐藏均自动提交，远端确认成功后再回显结果。
+  查看不写入配置。版本冲突不会覆盖他人修改；失败后重新读取远端状态。
+  节点操作只更新配置，不重新发布 Worker。
 
 配置说明（全部放在同一个 .env）
   CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN

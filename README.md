@@ -67,9 +67,9 @@ SSS_WORKER_URL=https://你的Worker地址
 SSS_MANAGEMENT_TOKEN=部署机器.env中的管理Token
 ```
 
-运行 `bash ./sss.sh`：菜单 **2** 添加、**3** 删除、**4** 修改、**5** 切换 Web 隐藏状态。编辑只改变本地草稿，菜单 **6** 提交到远端。提交使用 revision CAS，防止覆盖另一台管理机器的修改。
+运行 `bash ./sss.sh`：菜单 **2** 添加、**3** 删除、**4** 修改、**5** 切换 Web 隐藏状态。所有修改自动提交到远端，确认成功后才显示结果；查看不写入配置。提交使用 revision CAS，防止覆盖另一台管理机器的修改。提交失败会重新读取远端状态，不显示成功或未注册节点的安装命令。
 
-添加后先提交，再复制脚本打印的完整命令到 VPS，以普通用户执行。命令包含节点凭据和相同 GitHub 源；Agent 以当前用户运行，不需要 Docker。若用户 systemd manager 尚未启动，安装器会自动修复；主机策略可能要求一次 sudo 授权以启用当前用户的 linger 和 manager。Agent 位于 `~/.local/share/sss/agent`，用户 service 位于 `~/.config/systemd/user/sss-agent.service`。
+添加成功后，复制脚本打印的完整命令到 VPS。普通用户直接执行，以该用户安装和运行；root 执行时会先询问确认，输入 `y` 后才以 root 安装和运行，回车、拒绝或无输入均取消。每次 root 安装或更新都需确认。命令包含节点凭据和相同 GitHub 源；Agent 以当前用户运行，不需要 Docker。若用户 systemd manager 尚未启动，安装器会自动修复；主机策略可能要求一次 sudo 授权以启用当前用户的 linger 和 manager。Agent 位于 `~/.local/share/sss/agent`，用户 service 位于 `~/.config/systemd/user/sss-agent.service`。
 
 ```bash
 systemctl --user status sss-agent
@@ -80,9 +80,9 @@ journalctl --user -u sss-agent -n 50 --no-pager
 
 Agent 明确使用 `ServerStatus-Agent/1.0` 标识访问上报 API，避免 Python 默认 User-Agent 被边缘规则误拒。HTTP 错误会记录状态、Cloudflare 错误码和 CF-Ray，不打印节点凭据或响应正文；如果上报接口被 Access 或 Challenge 保护，需要允许机器客户端正常访问。
 
-Agent 每 15 秒上报。用户 manager 和注销/重启后存活取决于 VPS 主机策略，必要时主机管理员需启用 linger。Agent 的原生 `/proc` 采集和 systemd 生命周期需在实际 Linux VPS 验证。
+Agent 默认每 3 秒上报，网页每 3 秒刷新，当前用于实际用量观察。按持续上报与一个全天打开的网页估算，1 节点约 57,600 次动态请求/天，2 节点约 86,400 次，3 节点约 115,200 次，超过 Workers 免费请求额度；同时关注 D1 读写用量、失败重试和其他访客。用户 manager 和注销/重启后存活取决于 VPS 主机策略，必要时主机管理员需启用 linger。Agent 的原生 `/proc` 采集和 systemd 生命周期需在实际 Linux VPS 验证。
 
-删除节点并提交后，其上报会被拒绝；在 VPS 运行安装器菜单 **2** 可卸载服务。隐藏只影响网页展示，不停止上报或通知。安装器菜单 **1** 更新现有 Agent，保留凭据；下载失败不会破坏旧安装。安装器会将 GitHub 源保存在 Agent 目录内私有的 `.env`，后续更新复用该来源；显式设置 `GITHUB_RAW_URL` 可覆盖。下载后校验 Cloudflare 协议标记，旧 TCP Agent 不会替换当前 Agent。
+删除节点成功后，其上报会被拒绝；在 VPS 运行安装器菜单 **2** 可卸载服务。隐藏只影响网页展示，不停止上报或通知。安装器菜单 **1** 更新现有 Agent，保留凭据；下载失败不会破坏旧安装。安装器会将 GitHub 源保存在 Agent 目录内私有的 `.env`，后续更新复用该来源；显式设置 `GITHUB_RAW_URL` 可覆盖。下载后校验 Cloudflare 协议标记，旧 TCP Agent 不会替换当前 Agent。
 
 ## 无 CF 配置的本地测试
 
@@ -98,7 +98,7 @@ npm run smoke:local
 SSS_WORKER_URL=http://127.0.0.1:8788 SSS_MANAGEMENT_TOKEN=local-test-token bash ./sss.sh
 ```
 
-首次准备四个模拟节点：可见在线/离线、隐藏在线/离线。在线节点每 15 秒模拟上报。数据保存在 `.wrangler/manual-state`，重启保留修改。Ctrl+C 停止；停止后移除此目录可重置手动测试数据。可用 `SSS_SMOKE_PORT=8789 npm run smoke:local` 修改端口。
+首次准备四个模拟节点：可见在线/离线、隐藏在线/离线。在线节点每 3 秒模拟上报。数据保存在 `.wrangler/manual-state`，重启保留修改。Ctrl+C 停止；停止后移除此目录可重置手动测试数据。可用 `SSS_SMOKE_PORT=8789 npm run smoke:local` 修改端口。
 
 自动测试使用单独临时 D1/Worker，覆盖节点 CRUD、隐藏、并发版本冲突、Python 上报和资源加载；部署流程的 CF API/发布使用替身验证，生成的生产配置使用真实 Wrangler dry-run 编译。不会操作真实账号。Linux service 控制使用替身，不能代替实际 VPS 验证。
 
