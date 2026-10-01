@@ -6,6 +6,7 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const databaseId = '12345678-1234-1234-1234-123456789abc';
+const recoveryId = '22345678-1234-1234-1234-123456789abc';
 const base = { CLOUDFLARE_ACCOUNT_ID: 'a'.repeat(32), CLOUDFLARE_API_TOKEN: 'cf-secret', GITHUB_RAW_URL: 'https://raw.githubusercontent.com/lidalao/ServerStatus/feature/cloudflare-monitor' };
 const modulePromise = import('../scripts/deploy-cloudflare.mjs');
 
@@ -28,7 +29,8 @@ function harness(directory, overrides = {}) {
       if (route === '/workers/scripts') return [];
       if (route === '/workers/subdomain') return { subdomain: 'test-account' };
       if (route.startsWith('/d1/database?')) return [];
-      if (route === '/d1/database' && method === 'POST') return { uuid: databaseId };
+      if (route === '/d1/database' && method === 'POST') return { uuid: body.name.startsWith('sss-recovery-') ? recoveryId : databaseId };
+      if (route === `/d1/database/${recoveryId}/query`) return [{ success: true, results: [] }];
       if (route === `/d1/database/${databaseId}`) return { name: 'sss-server-status' };
       throw new Error('Unexpected API: ' + route);
     },
@@ -40,6 +42,7 @@ function harness(directory, overrides = {}) {
       assert.deepEqual(config.assets.run_worker_first, ['/api/*', '/json/*']);
       assert.equal(config.durable_objects.bindings[0].class_name, 'RealtimeHub');
       assert.deepEqual(config.migrations[0].new_sqlite_classes, ['RealtimeHub']);
+      assert.equal(config.d1_databases.length, 1, 'the recovery database must never be bound to the public Worker');
       assert.match(config.vars.SSS_REALTIME_INTERVAL, /^(?:[1-9]|[1-5][0-9]|60)$/);
       assert.equal(config.triggers.crons[0], '* * * * *');
       assert.equal(config.account_id, base.CLOUDFLARE_ACCOUNT_ID);
@@ -63,7 +66,12 @@ test('initial deployment creates D1, persists credentials, migrates, publishes a
   assert.equal(config.SSS_D1_ID, databaseId);
   assert.match(config.SSS_MANAGEMENT_TOKEN, /^[a-f0-9]{64}$/);
   assert.equal(config.SSS_WORKER_URL, 'https://sss-server-status.test-account.workers.dev');
-  assert.equal(h.calls.filter(c => c.method === 'POST').length, 1);
+  assert.equal(h.calls.filter(c => c.route === '/d1/database').length, 2);
+  const backup = h.calls.find(c => c.body?.sql?.startsWith('INSERT INTO deployment_recovery'));
+  const payload = JSON.parse(backup.body.params[0]);
+  assert.equal(payload.config.SSS_MANAGEMENT_TOKEN, config.SSS_MANAGEMENT_TOKEN);
+  assert.ok(!JSON.stringify(payload).includes('cf-secret'));
+  assert.equal(payload.config.CLOUDFLARE_ACCOUNT_ID, undefined);
   assert.equal(h.commands.length, 3);
   assert.ok(h.commands[0].args.includes('--dry-run'));
   assert.deepEqual(h.commands[1].args.slice(1, 5), ['d1', 'migrations', 'apply', 'sss-server-status']);
@@ -86,11 +94,87 @@ test('redeployment reuses D1 and management token and preserves env comments', a
   const result = await deploy(h.options);
   assert.equal(result.SSS_MANAGEMENT_TOKEN, 'stable-token');
   assert.equal(result.SSS_WORKER_URL, 'https://custom.example.com');
-  assert.equal(h.calls.some(c => c.method === 'POST'), false);
+  assert.equal(h.calls.some(c => c.route === '/d1/database' && c.body?.name === 'sss-server-status'), false);
   assert.equal(h.secrets[0].values.TG_BOT_TOKEN, 'tg-secret');
   const saved = fs.readFileSync(h.options.settingsPath, 'utf8');
   assert.match(saved, /# keep me\nCUSTOM_SETTING=kept/);
   assert.equal((saved.match(/SSS_D1_ID=/g) || []).length, 1);
+});
+
+test('deployment backup restores a second machine through the same D1 SQL without changing CF credentials', async t => {
+  const directory = fixture(t);
+  const h = harness(directory, { settings: { ...base, SSS_D1_ID: databaseId, SSS_MANAGEMENT_TOKEN: 'original-token',
+    SSS_WORKER_URL: 'https://custom.example.com', SSS_REALTIME_INTERVAL: '2', TG_BOT_TOKEN: 'tg-original', TG_CHAT_ID: '123' } });
+  const { deploy, recoverSettings, recoveryDatabaseName } = await modulePromise;
+  const original = h.options.api;
+  let created = false;
+  const storage = path.join(directory, 'recovery.sqlite');
+  const api = async (route, method, body) => {
+    if (route.startsWith('/d1/database?name=sss-recovery-')) return created ? [{ name: recoveryDatabaseName('sss-server-status'), uuid: recoveryId }] : [];
+    if (route === '/d1/database' && body?.name.startsWith('sss-recovery-')) { created = true; return { uuid: recoveryId }; }
+    if (route === `/d1/database/${recoveryId}/query`) {
+      const result = spawnSync('python3', ['-c', `import sqlite3,json,sys
+request=json.load(sys.stdin)
+db=sqlite3.connect(sys.argv[1]);db.row_factory=sqlite3.Row
+cursor=db.execute(request['sql'],request['params'])
+rows=[dict(row) for row in cursor.fetchall()] if cursor.description else []
+db.commit();print(json.dumps(rows))`, storage], { input: JSON.stringify(body), encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      return [{ success: true, results: JSON.parse(result.stdout) }];
+    }
+    if (route === '/workers/scripts') return [{ id: 'sss-server-status' }];
+    return original(route, method, body);
+  };
+  h.options.api = api;
+  const deployed = await deploy(h.options);
+  const otherFile = path.join(directory, 'other.env');
+  const recovered = await recoverSettings({ settingsPath: otherFile,
+    settings: { CLOUDFLARE_ACCOUNT_ID: base.CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN: 'different-valid-token' }, api, emit() {} });
+  for (const key of ['SSS_D1_ID', 'SSS_WORKER_URL', 'SSS_MANAGEMENT_TOKEN', 'TG_BOT_TOKEN', 'TG_CHAT_ID', 'SSS_REALTIME_INTERVAL']) assert.equal(recovered[key], deployed[key]);
+  assert.equal(recovered.CLOUDFLARE_API_TOKEN, 'different-valid-token');
+  assert.equal(fs.statSync(otherFile).mode & 0o777, 0o600);
+
+  const changed = await deploy({ ...h.options, settingsPath: otherFile, settings: { ...recovered, SSS_REALTIME_INTERVAL: '3' } });
+  assert.equal(changed.SSS_REALTIME_INTERVAL, '3');
+  const updatedOriginal = await deploy({ ...h.options, settings: deployed });
+  assert.equal(updatedOriginal.SSS_REALTIME_INTERVAL, '3', 'an unchanged local 2 must adopt remote 3');
+  assert.match(fs.readFileSync(h.options.settingsPath, 'utf8'), /SSS_REALTIME_INTERVAL=3/);
+
+  await deploy({ ...h.options, settingsPath: otherFile, settings: { ...changed, SSS_REALTIME_INTERVAL: '4' } });
+  const beforeConflict = h.commands.length;
+  await assert.rejects(deploy({ ...h.options, settings: { ...updatedOriginal, SSS_REALTIME_INTERVAL: '5' } }), /配置冲突.*SSS_REALTIME_INTERVAL/);
+  assert.equal(h.commands.length, beforeConflict, 'conflicts stop before Worker deployment');
+  const refreshed = await recoverSettings({ settingsPath: h.options.settingsPath, settings: updatedOriginal, api, emit() {} });
+  assert.equal(refreshed.SSS_REALTIME_INTERVAL, '4', 'sync replaces stale and unpublished local settings');
+  const other = await recoverSettings({ settingsPath: otherFile, settings: changed, api, emit() {} });
+  await deploy({ ...h.options, settingsPath: otherFile, settings: { ...other, SSS_REALTIME_INTERVAL: '6' } });
+  const merged = await deploy({ ...h.options, settings: { ...refreshed, TG_CHAT_ID: '456' } });
+  assert.equal(merged.SSS_REALTIME_INTERVAL, '6', 'independent remote changes are adopted');
+  assert.equal(merged.TG_CHAT_ID, '456', 'independent local changes are retained');
+
+  await api(`/d1/database/${recoveryId}/query`, 'POST', { sql: 'UPDATE deployment_recovery SET lease_owner = ?, lease_until = ? WHERE id = 1', params: ['other-machine', Math.floor(Date.now()/1000)+900] });
+  const beforeLocked = h.commands.length;
+  await assert.rejects(deploy({ ...h.options, settings: merged }), /另一台机器正在部署/);
+  assert.equal(h.commands.length, beforeLocked+1, 'only the read-only local dry run may run before acquiring the lock');
+  const held = await api(`/d1/database/${recoveryId}/query`, 'POST', { sql: 'SELECT lease_owner FROM deployment_recovery WHERE id = 1', params: [] });
+  assert.equal(held[0].results[0].lease_owner, 'other-machine', 'a failed contender cannot release another deploy lock');
+  await api(`/d1/database/${recoveryId}/query`, 'POST', { sql: 'UPDATE deployment_recovery SET lease_until = ? WHERE id = 1', params: [Math.floor(Date.now()/1000)-1] });
+  const afterCrash = await deploy({ ...h.options, settings: merged });
+  assert.equal(afterCrash.SSS_REALTIME_INTERVAL, '6', 'an expired lock from a crashed deploy can be reclaimed');
+});
+
+test('backup failure distinguishes an already published service and preserves its local recovery credentials', async t => {
+  const directory = fixture(t);
+  const h = harness(directory);
+  const original = h.options.api;
+  h.options.api = async (route, ...args) => {
+    if (route === `/d1/database/${recoveryId}/query`) throw Error('permission denied: cf-secret');
+    return original(route, ...args);
+  };
+  const { deploy } = await modulePromise;
+  await assert.rejects(deploy(h.options), error => /发布和验证已完成.*备份保存失败/.test(error.message) && !error.message.includes('cf-secret'));
+  assert.match(fs.readFileSync(h.options.settingsPath, 'utf8'), /SSS_MANAGEMENT_TOKEN=[a-f0-9]{64}/);
+  assert.equal(fs.existsSync(h.secrets[0].file), false);
 });
 
 test('existing named D1 is reused when its ID is not yet saved', async t => {
@@ -100,7 +184,7 @@ test('existing named D1 is reused when its ID is not yet saved', async t => {
   h.options.api = async (route, ...args) => route.startsWith('/d1/database?') ? [{ name: 'sss-server-status', uuid: databaseId }] : original(route, ...args);
   const { deploy } = await modulePromise;
   await deploy(h.options);
-  assert.equal(h.calls.some(c => c.method === 'POST'), false);
+  assert.equal(h.calls.some(c => c.route === '/d1/database' && c.body?.name === 'sss-server-status'), false);
 });
 
 test('plan makes no network calls, launches no commands and writes no settings', async t => {

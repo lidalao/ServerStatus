@@ -28,7 +28,7 @@ read_settings() {
             \'*\') value=${value#\'}; value=${value%\'} ;;
         esac
         case "$key" in
-            CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|SSS_WORKER_NAME|SSS_D1_NAME|SSS_D1_ID|SSS_WORKER_URL|SSS_MANAGEMENT_TOKEN|TG_BOT_TOKEN|TG_CHAT_ID|SSS_REALTIME_INTERVAL|GITHUB_RAW_URL)
+            CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|SSS_WORKER_NAME|SSS_D1_NAME|SSS_D1_ID|SSS_WORKER_URL|SSS_MANAGEMENT_TOKEN|TG_BOT_TOKEN|TG_CHAT_ID|SSS_REALTIME_INTERVAL|SSS_SETTINGS_BASELINE|GITHUB_RAW_URL)
                 [ -n "${!key}" ] || printf -v "$key" '%s' "$value"
                 export "$key"
                 ;;
@@ -387,7 +387,7 @@ deploy_cloudflare() {
     command -v node >/dev/null 2>&1 || { err "部署需要 Node.js 22+ 和 npm"; return 1; }
     local argument
     for argument in "$@"; do
-        [ "$argument" = "--plan" ] || { err "部署参数仅支持 --plan"; return 1; }
+        [[ "$argument" = --plan || "$argument" = --recover ]] || { err "无效的部署/恢复参数"; return 1; }
     done
     if [ "${1:-}" != "--plan" ] && { [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] || [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; }; then
         err "请在 ${SSS_ENV_FILE} 填写 CLOUDFLARE_ACCOUNT_ID 和 CLOUDFLARE_API_TOKEN"
@@ -535,7 +535,14 @@ init_settings() {
     setup_dependencies || return 1
     [ ! -e "$SSS_ENV_FILE" ] || {
         chmod 600 "$SSS_ENV_FILE" || return 1
-        info "配置文件已存在，已保留: $SSS_ENV_FILE"; return 0;
+        info "配置文件已存在，已保留: $SSS_ENV_FILE"
+        if [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ] && [ -n "${CLOUDFLARE_API_TOKEN:-}" ] &&
+           { [ -z "${SSS_D1_ID:-}" ] || [ -z "$SSS_WORKER_URL" ] || [ -z "$SSS_MANAGEMENT_TOKEN" ]; }; then
+            info "使用 CF API 权限恢复已有服务配置…"
+            deploy_cloudflare --recover
+            return $?
+        fi
+        return 0;
     }
     mkdir -p "$(dirname "$SSS_ENV_FILE")" || return 1
     (umask 077; cat > "$SSS_ENV_FILE" <<'SETTINGS'
@@ -553,7 +560,7 @@ SSS_MANAGEMENT_TOKEN=
 # 可选通知；两项同时填写。留空时部署为关闭通知。
 TG_BOT_TOKEN=
 TG_CHAT_ID=
-SSS_REALTIME_INTERVAL=1
+SSS_REALTIME_INTERVAL=2
 
 # 与本分支一致的 GitHub 发布源。
 GITHUB_RAW_URL=https://raw.githubusercontent.com/lidalao/ServerStatus/feature/cloudflare-monitor
@@ -564,7 +571,7 @@ SETTINGS
 
 show_help() {
     cat <<HELP
-用法: bash $0 [init | deploy [--plan] | update [--plan] | help]
+用法: bash $0 [init | sync | deploy [--plan] | update [--plan] | help]
 配置文件: $SSS_ENV_FILE
 支持系统: macOS、Ubuntu、Debian
 
@@ -581,8 +588,16 @@ show_help() {
     Node.js 22 和 npm 从官网获取并验证 SHA-256，安装到 ~/.local/share/sss/node，
     后续脚本自动使用该运行时，不修改 shell 配置或替换系统 Node.js。
     在配置文件路径生成权限为 600 的 .env 模板；已有文件保留，重复 init 可补齐依赖。
+    已填写 CF 两项参数且缺少管理/数据库配置时，从独立 CF 私有备份恢复并回写 .env。
+    恢复不部署、不改节点、不更换管理 Token；原管理机器需先执行新版 update 创建备份。
+    多个部署通过可选 SSS_WORKER_NAME 选择；完整配置不会被重复 init 覆盖。
     首次部署前填写 CLOUDFLARE_ACCOUNT_ID 和 CLOUDFLARE_API_TOKEN。
     仅管理已有服务时，只填写 Worker 地址与管理 Token 即可。
+
+  sync
+    从 CF 私有备份拉取最新部署配置，回写本地 .env；不部署、不修改节点。
+    会以远端值替换本地的部署配置（包括未发布的修改），CF API 凭据保留。
+    执行前请保存需要保留的本地修改。需要 Node.js 和 CF 两项参数。
 
   deploy [--plan]
     首次部署 CF 上的 Web、API、D1 和通知任务，也可用于部署失败后重试。
@@ -600,6 +615,8 @@ show_help() {
     在源码目录中发布当前本地源码，不自动 git pull。
     单独下载的脚本会从 GITHUB_RAW_URL 获取源码，需要 curl 和 tar。
     deploy 同样遵循上述源码选择规则；CF 发布不会更新 GitHub 或 VPS Agent。
+    发布前与远端比较：本地未改的字段自动采用远端值；同字段双方修改则停止。
+    多管理机部署使用远端锁；冲突时先 sync，再编辑希望发布的值并 update。
 
   help / --help / -h
     显示本帮助，不访问 CF、不部署、不修改配置。
@@ -627,7 +644,7 @@ show_help() {
                          CF 账号与部署 Token，仅部署/更新需要。
   SSS_WORKER_NAME        Worker 名称，默认 sss-server-status。
   SSS_D1_NAME            D1 名称，默认 sss-server-status。
-  SSS_REALTIME_INTERVAL  有人查看时的上报间隔，1–60 的整数秒，默认 1；无人查看时 60 秒。
+  SSS_REALTIME_INTERVAL  有人查看时的上报间隔，1–60 的整数秒，默认 2；无人查看时 60 秒。
                          修改后执行 update，Agent 无需重新安装。
   SSS_D1_ID              D1 数据库 ID，部署时自动保存，更新时保留。
   SSS_WORKER_URL         Worker 地址，首次部署自动保存；管理节点需要。
@@ -650,6 +667,7 @@ show_help() {
   bash $0 deploy
   bash $0                       # 日常管理节点
   bash $0 update                # 发布当前源码及更新后的通知配置
+  bash $0 sync                  # 拉取其他管理机发布的最新配置
   SSS_ENV_FILE=/path/to/sss.env bash $0
 HELP
 }
@@ -657,6 +675,11 @@ HELP
 # ================= 入口 =================
 case "${1:-}" in
     init|--init) init_settings; exit $? ;;
+    sync)
+        [ "$#" -eq 1 ] || { err "sync 不接受额外参数"; exit 1; }
+        deploy_cloudflare --recover
+        exit $?
+        ;;
     deploy|--deploy|update|--update)
         action="$1"
         if [[ "$action" = update || "$action" = --update ]] && { [ -z "${SSS_D1_ID:-}" ] || [ -z "$SSS_WORKER_URL" ] || [ -z "$SSS_MANAGEMENT_TOKEN" ]; }; then

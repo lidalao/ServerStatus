@@ -15,6 +15,12 @@ bash ./sss.sh
 
 `init` 自动补齐 curl、jq、Node.js 22+ 和 npm，再生成权限为 600 的 `.env`。已有配置不会覆盖，重复执行可补齐依赖。macOS 缺少 curl/jq 时使用已有 Homebrew；Ubuntu/Debian 使用 apt-get，普通用户可能需要 sudo 安装系统工具。缺少合适 Node.js/npm 时从 nodejs.org 下载 Node.js 22，校验 SHA-256 后安装到 `~/.local/share/sss/node`；后续脚本自动使用，不替换系统 Node.js、不改 shell 配置。也可以复制 `.env.sample`。默认读取 `sss.sh` 同目录的 `.env`；指定其他文件用 `SSS_ENV_FILE=/path/to/sss.env bash ./sss.sh`。环境变量优先于文件值。文件只支持单行 `KEY=VALUE`（可带一对引号），不执行 shell 命令、不展开变量、不支持行尾注释。
 
+换机器继续管理：原管理机器先使用本版本执行一次 `bash ./sss.sh update`，建立恢复备份。然后在新 Mac/Ubuntu/Debian 上克隆本分支或下载 `sss.sh`，在相邻 `.env` 只填写 `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`，运行 `bash ./sss.sh init`。缺少管理/数据库配置时，脚本通过 CF API 从私有备份读取原管理 Token、Worker 地址、D1 ID、TG 配置、下载源及当前频率，原子回写权限 600 的 `.env`。之后直接运行 `bash ./sss.sh` 管理节点，或 `bash ./sss.sh update` 更新现有服务。默认 Worker 为 `sss-server-status`；同账号多个部署时，另外填写 `SSS_WORKER_NAME` 选择目标。已有完整 `.env` 的重复 init 只补齐依赖，不覆盖本地编辑。第一次部署尚无备份时，会保留本地设置；旧部署没有备份时会报错，要求原机器先 update，不会重新生成管理 Token。
+
+恢复备份保存在独立 D1 数据库 `sss-recovery-<Worker 名称摘要>`，占用一个额外数据库，不绑定到网页 Worker、不放进 Assets，也不新增公开恢复 API。只通过带 CF API Token 的 D1 API 读取；CF Account ID/API Token 本身不写入备份，换机器可以使用同账号的另一个具备相应权限的 Token。备份包含管理 Token 和 TG 配置，使用 Cloudflare 的传输/存储加密，但不是应用层端到端加密：账号管理员、拥有 D1 读取权限的人或被攻破的管理机仍可以读取。若需要防止这些主体读取，需要额外恢复密钥，无法保持只提供两项 CF 参数的流程。普通节点管理 Token 不具备读取备份的能力；浏览器仅接收公开指标。部署成功后的快照才更新；失败时本地 `.env` 保留，脚本会明确区分部署失败与备份失败。不要分享 `.env` 或提交到 Git。
+
+多管理机同步：执行 `bash ./sss.sh sync` 拉取其他机器已发布的最新配置，会覆盖本地尚未发布的配置修改，但保留当前机器的 CF API 凭据。`.env` 中自动保存 `SSS_SETTINGS_BASELINE` 作为上次同步/发布的字段摘要，请勿手改。`update` 发布前比较基线、本地和远端：未在本地修改的字段自动采用远端值；不同字段的修改可以合并；同字段双方改成不同值则停止发布并提示先 sync，再编辑目标值。首次建立基线前，若本地与已有备份不同，也会停止而不猜测。已有恢复快照的部署使用条件更新获取远端锁，同时检查快照未被另一机器修改；正常结束释放锁，进程异常退出的锁最多保留 15 分钟。首次部署/首次建立备份请只用一台管理机执行。
+
 首次部署只需填写：
 
 ```dotenv
@@ -35,7 +41,7 @@ Token 应针对目标账号具备 Workers Scripts 编辑、D1 编辑权限；脚
 | `SSS_WORKER_URL` | 部署后自动写回 workers.dev 地址；已有自定义域名可填入 |
 | `TG_BOT_TOKEN` / `TG_CHAT_ID` | 可选通知，两项同时填写；留空关闭通知 |
 | `GITHUB_RAW_URL` | CLI/Agent 发布来源，默认本分支 |
-| `SSS_REALTIME_INTERVAL` | 有人查看时的上报间隔，默认 `1` 秒，支持 `1`–`60` 的整数秒 |
+| `SSS_REALTIME_INTERVAL` | 有人查看时的上报间隔，默认 `2` 秒，支持 `1`–`60` 的整数秒 |
 
 ## 部署和更新
 
@@ -81,7 +87,7 @@ journalctl --user -u sss-agent -n 50 --no-pager
 
 Agent 明确使用 `ServerStatus-Agent/1.0` 标识访问上报 API，避免 Python 默认 User-Agent 被边缘规则误拒。HTTP 错误会记录状态、Cloudflare 错误码和 CF-Ray，不打印节点凭据或响应正文；如果上报接口被 Access 或 Challenge 保护，需要允许机器客户端正常访问。
 
-Agent 使用 WSS 长连接上报：有可见网页订阅时默认每 **1 秒**上报，无人查看时每 **60 秒**上报；网页收到推送即更新，切到后台会关闭订阅，切回自动恢复。Worker 的一个共享 Durable Object 保存最新状态，现有每分钟 Cron 将有变化的节点写入 D1，并进行离线通知检查。旧 Agent 的 HTTPS POST 接口继续可用，支持逐台升级，但旧 Agent 仍按原频率消耗 Worker 请求和 D1 写入。
+Agent 使用 WSS 长连接上报：有可见网页订阅时默认每 **2 秒**上报，无人查看时每 **60 秒**上报；网页收到推送即更新，切到后台会关闭订阅，切回自动恢复。Worker 的一个共享 Durable Object 保存最新状态，现有每分钟 Cron 将有变化的节点写入 D1，并进行离线通知检查。旧 Agent 的 HTTPS POST 接口继续可用，支持逐台升级，但旧 Agent 仍按原频率消耗 Worker 请求和 D1 写入。
 
 统一 `.env` 中设置 `SSS_REALTIME_INTERVAL` 为 1–60 的整数秒（例如 `5`），运行 `bash ./sss.sh update` 后生效，新版 Agent 自动接收频率，无需再次安装。普通用户、root 确认安装和 linger 行为不变；Agent 使用 Python 标准库，不需要安装 pip 或额外运行依赖。Agent 原来的显式 `REPORT_INTERVAL` 参数作为最小间隔保留：若服务里手动指定了较大值，需要移除该覆盖才能达到 1 秒。
 
