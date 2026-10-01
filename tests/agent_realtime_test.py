@@ -59,6 +59,42 @@ class FramingTests(unittest.TestCase):
         with self.assertRaises(ValueError): a.AgentWebSocket('https://example.com', 'user\r\nX: injected', 'pass')
 
 class ReportingTests(unittest.TestCase):
+    def test_integer_intervals_and_five_second_cadence(self):
+        from unittest.mock import patch
+        for interval in (1, 2, 5, 10, 59, 60):
+            with self.subTest(interval=interval):
+                clock = [0.0]
+                latest = {'metrics': {'network_in': 1}, 'time': 0}
+                sent = []
+                class Connection:
+                    ack = False
+                    def report(self, metrics):
+                        sent.append(clock[0]); self.ack = True
+                    def send_frame(self, *args): pass
+                    def receive(self, timeout):
+                        if self.ack:
+                            self.ack = False
+                            return {'type': 'ack', 'seconds': interval}
+                        clock[0] += timeout
+                        latest['time'] = clock[0]
+                        if clock[0] > interval * 3 + 1: raise KeyboardInterrupt()
+                with patch.object(a.time, 'monotonic', lambda: clock[0]):
+                    with self.assertRaises(KeyboardInterrupt):
+                        a.stream_metrics(Connection(), latest, lambda: None)
+                self.assertGreaterEqual(len(sent), 3)
+                # The first sample may precede the server's initial hint.
+                for before, after in zip(sent[1:], sent[2:]):
+                    self.assertAlmostEqual(after - before, interval, delta=.02)
+
+    def test_invalid_server_intervals_are_rejected(self):
+        for interval in (0, -1, 61, 1.5, True, '5', None):
+            with self.subTest(interval=interval):
+                class Connection:
+                    def receive(self, timeout): return {'type': 'interval', 'seconds': interval}
+                    def send_frame(self, *args): pass
+                with self.assertRaisesRegex(RuntimeError, 'Invalid reporting interval'):
+                    a.stream_metrics(Connection(), {'metrics': None, 'time': 0}, lambda: None)
+
     def test_report_frequency_tracks_server_hints(self):
         from unittest.mock import patch
         clock = [0.0]

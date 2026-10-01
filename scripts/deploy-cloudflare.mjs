@@ -42,7 +42,7 @@ export async function deploy({ root = rootDirectory, settingsPath, settings, pla
   config.SSS_WORKER_NAME ||= 'sss-server-status';
   config.SSS_D1_NAME ||= config.SSS_WORKER_NAME;
   config.SSS_REALTIME_INTERVAL ||= '1';
-  if (!['1', '3'].includes(String(config.SSS_REALTIME_INTERVAL))) throw new Error('SSS_REALTIME_INTERVAL 只支持 1 或 3 秒');
+  if (!/^(?:[1-9]|[1-5][0-9]|60)$/.test(String(config.SSS_REALTIME_INTERVAL))) throw new Error('SSS_REALTIME_INTERVAL 必须是 1–60 的整数秒');
   for (const value of Object.values(config)) {
     if (/[\r\n\0]/.test(value)) throw new Error('配置必须使用单行值');
   }

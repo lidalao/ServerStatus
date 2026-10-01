@@ -35,7 +35,7 @@ Token 应针对目标账号具备 Workers Scripts 编辑、D1 编辑权限；脚
 | `SSS_WORKER_URL` | 部署后自动写回 workers.dev 地址；已有自定义域名可填入 |
 | `TG_BOT_TOKEN` / `TG_CHAT_ID` | 可选通知，两项同时填写；留空关闭通知 |
 | `GITHUB_RAW_URL` | CLI/Agent 发布来源，默认本分支 |
-| `SSS_REALTIME_INTERVAL` | 有人查看时的上报间隔，默认 `1` 秒，可选 `3` 秒 |
+| `SSS_REALTIME_INTERVAL` | 有人查看时的上报间隔，默认 `1` 秒，支持 `1`–`60` 的整数秒 |
 
 ## 部署和更新
 
@@ -83,7 +83,9 @@ Agent 明确使用 `ServerStatus-Agent/1.0` 标识访问上报 API，避免 Pyth
 
 Agent 使用 WSS 长连接上报：有可见网页订阅时默认每 **1 秒**上报，无人查看时每 **60 秒**上报；网页收到推送即更新，切到后台会关闭订阅，切回自动恢复。Worker 的一个共享 Durable Object 保存最新状态，现有每分钟 Cron 将有变化的节点写入 D1，并进行离线通知检查。旧 Agent 的 HTTPS POST 接口继续可用，支持逐台升级，但旧 Agent 仍按原频率消耗 Worker 请求和 D1 写入。
 
-统一 `.env` 中设置 `SSS_REALTIME_INTERVAL=1` 或 `3`，运行 `bash ./sss.sh update` 后生效，新版 Agent 自动接收频率，无需再次安装。普通用户、root 确认安装和 linger 行为不变；Agent 使用 Python 标准库，不需要安装 pip 或额外运行依赖。Agent 原来的显式 `REPORT_INTERVAL` 参数作为最小间隔保留：若服务里手动指定了较大值，需要移除该覆盖才能达到 1 秒。
+统一 `.env` 中设置 `SSS_REALTIME_INTERVAL` 为 1–60 的整数秒（例如 `5`），运行 `bash ./sss.sh update` 后生效，新版 Agent 自动接收频率，无需再次安装。普通用户、root 确认安装和 linger 行为不变；Agent 使用 Python 标准库，不需要安装 pip 或额外运行依赖。Agent 原来的显式 `REPORT_INTERVAL` 参数作为最小间隔保留：若服务里手动指定了较大值，需要移除该覆盖才能达到 1 秒。
+
+从最初的 WSS 版本升级时，请先保持 `SSS_REALTIME_INTERVAL=1`（或原有 `3`），部署 CF 并逐台更新 Agent，再设为 `5` 等新间隔。最初的 Agent 只接受 1、3、60 秒，直接向它下发 5 秒会触发重连。本次更新到支持 1–60 秒的 Agent 后，范围内的后续频率调整仅需更新 CF。无人查看时仍固定 60 秒，避免超过现有离线阈值。
 
 按 11 节点全天每秒上报估算，DO 入站消息折算约 47,520 次请求/天；3 秒约 15,840 次，另需预留建立连接、重连、网页心跳、每分钟任务及同账号其他应用。每分钟保存 11 个节点约 15,840 次记录写入/天，索引增加的实际行写入应通过 D1 指标确认。使用单个 DO，仍需观察运行时长额度；不能把消息配额当作唯一限制。浏览器异常时退避重连，并最多每 60 秒 HTTP 回退查询，显示数据可能过期。
 

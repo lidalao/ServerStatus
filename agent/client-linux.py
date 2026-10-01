@@ -450,7 +450,7 @@ def stream_metrics(connection, latest, on_ack):
         control = connection.receive(min(1, max(0.01, next_report - time.monotonic())))
         if isinstance(control, dict) and control.get('type') in ('ack', 'interval'):
             suggested = control.get('seconds')
-            if type(suggested) is not int or suggested not in (1, 3, 60):
+            if type(suggested) is not int or not 1 <= suggested <= 60:
                 raise RuntimeError('Invalid reporting interval')
             new_interval = max(REPORT_INTERVAL, suggested)
             if new_interval != seconds:

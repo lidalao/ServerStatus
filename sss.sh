@@ -627,7 +627,7 @@ show_help() {
                          CF 账号与部署 Token，仅部署/更新需要。
   SSS_WORKER_NAME        Worker 名称，默认 sss-server-status。
   SSS_D1_NAME            D1 名称，默认 sss-server-status。
-  SSS_REALTIME_INTERVAL  有人查看时的上报间隔，1 或 3 秒，默认 1；无人查看时 60 秒。
+  SSS_REALTIME_INTERVAL  有人查看时的上报间隔，1–60 的整数秒，默认 1；无人查看时 60 秒。
                          修改后执行 update，Agent 无需重新安装。
   SSS_D1_ID              D1 数据库 ID，部署时自动保存，更新时保留。
   SSS_WORKER_URL         Worker 地址，首次部署自动保存；管理节点需要。

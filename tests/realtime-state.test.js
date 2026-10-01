@@ -28,6 +28,18 @@ async function fixture({ saved = [], attachments = [], failWrite = false, interv
   return {hub,writes,notifications,sockets,nodes,config};
 }
 function row(last_seen,counter=100){return {username:'node',last_seen,metrics_json:JSON.stringify({online4:true,network_in:counter,network_out:counter,monthly_network_in:50}),traffic_period:'2026-10',traffic_base_in:0,traffic_base_out:0};}
+test('hub sends configured integer intervals in hints and ACKs, retaining idle 60 seconds',async()=>{
+  for(const interval of [1,2,5,10,59,60]){
+    const messages=[];
+    const viewer={readyState:1,send(){}};
+    const f=await fixture({interval:String(interval),viewer,attachments:[{role:'agent',username:'node',password:'pass'}]});
+    const agent=f.sockets[0];agent.send=data=>messages.push(JSON.parse(data));
+    f.hub.hint();assert.equal(messages.at(-1).seconds,interval);
+    await f.hub.webSocketMessage(agent,JSON.stringify({metrics:{network_in:1,network_out:1}}));
+    assert.equal(messages.at(-1).seconds,interval);
+    viewer.readyState=3;f.hub.hint();assert.equal(messages.at(-1).seconds,60);
+  }
+});
 test('hibernation reconstructs newer socket state instead of stale D1 checkpoint',async()=>{
   const f=await fixture({saved:[row(100)],attachments:[{role:'agent',username:'node',password:'pass',row:row(120,200)}]});
   assert.equal(f.hub.rows.get('node').last_seen,120);

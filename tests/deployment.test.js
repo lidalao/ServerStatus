@@ -40,7 +40,7 @@ function harness(directory, overrides = {}) {
       assert.deepEqual(config.assets.run_worker_first, ['/api/*', '/json/*']);
       assert.equal(config.durable_objects.bindings[0].class_name, 'RealtimeHub');
       assert.deepEqual(config.migrations[0].new_sqlite_classes, ['RealtimeHub']);
-      assert.ok(['1', '3'].includes(config.vars.SSS_REALTIME_INTERVAL));
+      assert.match(config.vars.SSS_REALTIME_INTERVAL, /^(?:[1-9]|[1-5][0-9]|60)$/);
       assert.equal(config.triggers.crons[0], '* * * * *');
       assert.equal(config.account_id, base.CLOUDFLARE_ACCOUNT_ID);
       if (args.includes('--secrets-file')) {
@@ -116,11 +116,27 @@ test('plan makes no network calls, launches no commands and writes no settings',
 test('invalid deployment settings stop before creating remote resources', async t => {
   const directory = fixture(t);
   const { deploy } = await modulePromise;
-  for (const settings of [{}, { ...base, SSS_WORKER_NAME: 'invalid name' }, { ...base, SSS_D1_ID: 'bad-id' }, { ...base, SSS_REALTIME_INTERVAL: '2' },
+  for (const settings of [{}, { ...base, SSS_WORKER_NAME: 'invalid name' }, { ...base, SSS_D1_ID: 'bad-id' }, { ...base, SSS_REALTIME_INTERVAL: '61' },
     { ...base, TG_BOT_TOKEN: 'only-token' }, { ...base, SSS_WORKER_URL: 'http://localhost' },
     { ...base, SSS_WORKER_URL: 'https://existing.example.com' }]) {
     const h = harness(directory, { settings });
     await assert.rejects(deploy(h.options));
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.commands.length, 0);
+  }
+});
+
+test('reporting interval accepts integer seconds 1–60 and rejects malformed values before deployment', async t => {
+  const directory = fixture(t);
+  const { deploy } = await modulePromise;
+  for (const interval of ['1', '2', '5', '10', '59', '60']) {
+    const h = harness(directory, { settings: { ...base, SSS_REALTIME_INTERVAL: interval } });
+    const result = await deploy(h.options);
+    assert.equal(result.SSS_REALTIME_INTERVAL, interval);
+  }
+  for (const interval of ['0', '-1', '61', '1.5', 'NaN', '5s', '1e1']) {
+    const h = harness(directory, { settings: { ...base, SSS_REALTIME_INTERVAL: interval } });
+    await assert.rejects(deploy(h.options), /SSS_REALTIME_INTERVAL/);
     assert.equal(h.calls.length, 0);
     assert.equal(h.commands.length, 0);
   }

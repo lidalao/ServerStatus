@@ -307,7 +307,8 @@ export class RealtimeHub {
     if (typeof WebSocketRequestResponsePair !== 'undefined') {
       ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     }
-    this.activeInterval = [1, 3].includes(Number(env.SSS_REALTIME_INTERVAL)) ? Number(env.SSS_REALTIME_INTERVAL) : 1;
+    const configuredInterval = Number(env.SSS_REALTIME_INTERVAL);
+    this.activeInterval = Number.isInteger(configuredInterval) && configuredInterval >= 1 && configuredInterval <= 60 ? configuredInterval : 1;
     ctx.blockConcurrencyWhile(async () => {
       this.config = await getConfig(env);
       const saved = await env.DB.prepare("SELECT * FROM agent_metrics").all();
