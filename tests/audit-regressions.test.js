@@ -153,6 +153,7 @@ test('manual smoke failure retains a failing exit status when Worker cleanup suc
   fs.mkdirSync(path.join(directory, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(directory, 'node_modules/wrangler/bin'), { recursive: true });
   fs.copyFileSync(path.join(root, 'scripts/local-smoke.mjs'), path.join(directory, 'scripts/local-smoke.mjs'));
+  fs.symlinkSync(path.dirname(require.resolve('ws/package.json')), path.join(directory, 'node_modules/ws'), 'dir');
   const socket = net.createServer();
   socket.listen(0, '127.0.0.1');
   await once(socket, 'listening');

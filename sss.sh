@@ -28,7 +28,7 @@ read_settings() {
             \'*\') value=${value#\'}; value=${value%\'} ;;
         esac
         case "$key" in
-            CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|SSS_WORKER_NAME|SSS_D1_NAME|SSS_D1_ID|SSS_WORKER_URL|SSS_MANAGEMENT_TOKEN|TG_BOT_TOKEN|TG_CHAT_ID|GITHUB_RAW_URL)
+            CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|SSS_WORKER_NAME|SSS_D1_NAME|SSS_D1_ID|SSS_WORKER_URL|SSS_MANAGEMENT_TOKEN|TG_BOT_TOKEN|TG_CHAT_ID|SSS_REALTIME_INTERVAL|GITHUB_RAW_URL)
                 [ -n "${!key}" ] || printf -v "$key" '%s' "$value"
                 export "$key"
                 ;;
@@ -553,6 +553,7 @@ SSS_MANAGEMENT_TOKEN=
 # 可选通知；两项同时填写。留空时部署为关闭通知。
 TG_BOT_TOKEN=
 TG_CHAT_ID=
+SSS_REALTIME_INTERVAL=1
 
 # 与本分支一致的 GitHub 发布源。
 GITHUB_RAW_URL=https://raw.githubusercontent.com/lidalao/ServerStatus/feature/cloudflare-monitor
@@ -626,6 +627,8 @@ show_help() {
                          CF 账号与部署 Token，仅部署/更新需要。
   SSS_WORKER_NAME        Worker 名称，默认 sss-server-status。
   SSS_D1_NAME            D1 名称，默认 sss-server-status。
+  SSS_REALTIME_INTERVAL  有人查看时的上报间隔，1 或 3 秒，默认 1；无人查看时 60 秒。
+                         修改后执行 update，Agent 无需重新安装。
   SSS_D1_ID              D1 数据库 ID，部署时自动保存，更新时保留。
   SSS_WORKER_URL         Worker 地址，首次部署自动保存；管理节点需要。
   SSS_MANAGEMENT_TOKEN   节点管理 Token，首次部署自动生成；与 CF API Token 不同。

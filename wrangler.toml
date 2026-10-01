@@ -5,7 +5,7 @@ compatibility_date = "2026-09-01"
 [assets]
 directory = "service/web"
 binding = "ASSETS"
-run_worker_first = ["/*"]
+run_worker_first = ["/api/*", "/json/*"]
 
 [[d1_databases]]
 binding = "DB"
@@ -15,3 +15,11 @@ migrations_dir = "cloudflare/migrations"
 
 [triggers]
 crons = ["* * * * *"]
+
+[[durable_objects.bindings]]
+name = "REALTIME"
+class_name = "RealtimeHub"
+
+[[migrations]]
+tag = "realtime-v1"
+new_sqlite_classes = ["RealtimeHub"]

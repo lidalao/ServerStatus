@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const keys = ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', 'SSS_WORKER_NAME', 'SSS_D1_NAME', 'SSS_D1_ID',
-  'SSS_WORKER_URL', 'SSS_MANAGEMENT_TOKEN', 'TG_BOT_TOKEN', 'TG_CHAT_ID', 'GITHUB_RAW_URL'];
+  'SSS_REALTIME_INTERVAL', 'SSS_WORKER_URL', 'SSS_MANAGEMENT_TOKEN', 'TG_BOT_TOKEN', 'TG_CHAT_ID', 'GITHUB_RAW_URL'];
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -41,6 +41,8 @@ export async function deploy({ root = rootDirectory, settingsPath, settings, pla
   const config = Object.fromEntries(keys.map(key => [key, settings[key] || '']));
   config.SSS_WORKER_NAME ||= 'sss-server-status';
   config.SSS_D1_NAME ||= config.SSS_WORKER_NAME;
+  config.SSS_REALTIME_INTERVAL ||= '1';
+  if (!['1', '3'].includes(String(config.SSS_REALTIME_INTERVAL))) throw new Error('SSS_REALTIME_INTERVAL 只支持 1 或 3 秒');
   for (const value of Object.values(config)) {
     if (/[\r\n\0]/.test(value)) throw new Error('配置必须使用单行值');
   }
@@ -90,7 +92,10 @@ export async function deploy({ root = rootDirectory, settingsPath, settings, pla
     const writeConfig = databaseId => writeFileSync(generated, JSON.stringify({
       name: config.SSS_WORKER_NAME, account_id: config.CLOUDFLARE_ACCOUNT_ID,
       main: path.join(root, 'cloudflare/worker.js'), compatibility_date: '2026-09-01', workers_dev: true,
-      assets: { directory: path.join(root, 'service/web'), binding: 'ASSETS', run_worker_first: ['/*'] },
+      assets: { directory: path.join(root, 'service/web'), binding: 'ASSETS', run_worker_first: ['/api/*', '/json/*'] },
+      vars: { SSS_REALTIME_INTERVAL: String(config.SSS_REALTIME_INTERVAL) },
+      durable_objects: { bindings: [{ name: 'REALTIME', class_name: 'RealtimeHub' }] },
+      migrations: [{ tag: 'realtime-v1', new_sqlite_classes: ['RealtimeHub'] }],
       d1_databases: [{ binding: 'DB', database_name: config.SSS_D1_NAME, database_id: databaseId,
         migrations_dir: path.join(root, 'cloudflare/migrations') }], triggers: { crons: ['* * * * *'] },
     }, null, 2));

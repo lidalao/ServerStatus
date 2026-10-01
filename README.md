@@ -1,6 +1,6 @@
 # ServerStatus
 
-本分支只使用 Cloudflare Workers + D1：Web、API 和通知任务跑在 CF；Linux VPS 运行 Python HTTPS Agent；管理机器通过 `sss.sh` 操作节点。没有 Docker 或自托管后端。
+本分支只使用 Cloudflare Workers + D1 + Durable Objects：Web、API、实时广播和通知任务跑在 CF；Linux VPS 运行 Python WSS Agent；管理机器通过 `sss.sh` 操作节点。没有 Docker 或自托管后端。
 
 ## 一个配置文件，一个入口
 
@@ -35,6 +35,7 @@ Token 应针对目标账号具备 Workers Scripts 编辑、D1 编辑权限；脚
 | `SSS_WORKER_URL` | 部署后自动写回 workers.dev 地址；已有自定义域名可填入 |
 | `TG_BOT_TOKEN` / `TG_CHAT_ID` | 可选通知，两项同时填写；留空关闭通知 |
 | `GITHUB_RAW_URL` | CLI/Agent 发布来源，默认本分支 |
+| `SSS_REALTIME_INTERVAL` | 有人查看时的上报间隔，默认 `1` 秒，可选 `3` 秒 |
 
 ## 部署和更新
 
@@ -80,7 +81,18 @@ journalctl --user -u sss-agent -n 50 --no-pager
 
 Agent 明确使用 `ServerStatus-Agent/1.0` 标识访问上报 API，避免 Python 默认 User-Agent 被边缘规则误拒。HTTP 错误会记录状态、Cloudflare 错误码和 CF-Ray，不打印节点凭据或响应正文；如果上报接口被 Access 或 Challenge 保护，需要允许机器客户端正常访问。
 
-Agent 默认每 15 秒上报，网页每 10 秒刷新。按 11 个节点持续上报和一个全天打开的网页估算，约 72,000 次动态请求/天；需要为失败重试、其他访客和同账号其他服务保留余量，并关注 D1 实际读写用量。增加到约 20 个节点时，建议将上报间隔提高至 30 秒。旧安装若出现 SSH 退出后离线、重新登录后上线，请用安装 Agent 的同一用户执行 `sudo loginctl enable-linger "$(id -un)"`，并确认 `loginctl show-user "$(id -un)" -p Linger` 返回 `Linger=yes`。Agent 的原生 `/proc` 采集和 systemd 生命周期需在实际 Linux VPS 验证。
+Agent 使用 WSS 长连接上报：有可见网页订阅时默认每 **1 秒**上报，无人查看时每 **60 秒**上报；网页收到推送即更新，切到后台会关闭订阅，切回自动恢复。Worker 的一个共享 Durable Object 保存最新状态，现有每分钟 Cron 将有变化的节点写入 D1，并进行离线通知检查。旧 Agent 的 HTTPS POST 接口继续可用，支持逐台升级，但旧 Agent 仍按原频率消耗 Worker 请求和 D1 写入。
+
+统一 `.env` 中设置 `SSS_REALTIME_INTERVAL=1` 或 `3`，运行 `bash ./sss.sh update` 后生效，新版 Agent 自动接收频率，无需再次安装。普通用户、root 确认安装和 linger 行为不变；Agent 使用 Python 标准库，不需要安装 pip 或额外运行依赖。Agent 原来的显式 `REPORT_INTERVAL` 参数作为最小间隔保留：若服务里手动指定了较大值，需要移除该覆盖才能达到 1 秒。
+
+按 11 节点全天每秒上报估算，DO 入站消息折算约 47,520 次请求/天；3 秒约 15,840 次，另需预留建立连接、重连、网页心跳、每分钟任务及同账号其他应用。每分钟保存 11 个节点约 15,840 次记录写入/天，索引增加的实际行写入应通过 D1 指标确认。使用单个 DO，仍需观察运行时长额度；不能把消息配额当作唯一限制。浏览器异常时退避重连，并最多每 60 秒 HTTP 回退查询，显示数据可能过期。
+
+目标使用条件是 **11 个新版 WSS Agent，网页连续可见 24 小时，保持 1 秒更新**：不会按观看时长自动降频，也不依赖无人查看时的节省才能满足预算。单个 DO 即使全天持续计费，按 128 MB 计算约 11,059 GB-s/天，低于 13,000 GB-s/天免费额度；每分钟任务另外约 1,440 次 DO 请求/天。消息折算规则和额度见 [Cloudflare 官方计费说明](https://developers.cloudflare.com/durable-objects/platform/pricing/)。免费额度由账号共享；此预算不覆盖无限访客、异常重连、旧版 HTTP Agent 或其他应用的额外消耗。1 秒为目标采样/上报间隔，不是网络延迟保证。上线后需按完整 UTC 自然日核对 Worker、DO 请求及运行时长、D1 读写指标；本地模拟时钟测试不能替代线上额度验证。
+
+迁移顺序：先发布 CF，再用原安装用户在每台 VPS 运行 Agent 安装器、选择 **1** 更新；只发布 CF 不会升级 VPS 上的程序。月流量沿用原统计方式，DO 休眠通过连接附件恢复状态；进程重启/发布断连后从 D1 最近的分钟快照恢复。最近一分钟尚未保存的瞬时指标可能丢失，若同时发生计数器重置，月流量也可能丢失该窗口的增量；该监控不作为精确计费账本。实际 Linux 采集、注销/重启后的服务持久运行仍需 VPS 验证。
+
+旧安装若出现 SSH 退出后离线、重新登录后上线，请用安装 Agent 的同一用户执行 `sudo loginctl enable-linger "$(id -un)"`，并确认 `loginctl show-user "$(id -un)" -p Linger` 返回 `Linger=yes`。
+
 
 删除节点成功后，其上报会被拒绝；在 VPS 运行安装器菜单 **2** 可卸载服务。隐藏只影响网页展示，不停止上报或通知。下载的 `sss-agent.sh` 执行结束后自动删除自身（含安装、更新、卸载、取消及失败退出），不会删除已安装 Agent。再次操作需重新下载。安装器菜单 **1** 更新现有 Agent，保留凭据；下载失败不会破坏旧安装。安装器会将 GitHub 源保存在 Agent 目录内私有的 `.env`，后续更新复用该来源；显式设置 `GITHUB_RAW_URL` 可覆盖。下载后校验 Cloudflare 协议标记，旧 TCP Agent 不会替换当前 Agent。
 
@@ -98,7 +110,7 @@ npm run smoke:local
 SSS_WORKER_URL=http://127.0.0.1:8788 SSS_MANAGEMENT_TOKEN=local-test-token bash ./sss.sh
 ```
 
-首次准备四个模拟节点：可见在线/离线、隐藏在线/离线。在线节点每 15 秒模拟上报。数据保存在 `.wrangler/manual-state`，重启保留修改。Ctrl+C 停止；停止后移除此目录可重置手动测试数据。可用 `SSS_SMOKE_PORT=8789 npm run smoke:local` 修改端口。
+首次准备四个模拟节点：可见在线/离线、隐藏在线/离线。在线节点使用真实 WSS：打开网页时每 1 秒模拟上报，无人查看时每 60 秒。数据保存在 `.wrangler/manual-state`，重启保留修改。Ctrl+C 停止；停止后移除此目录可重置手动测试数据。可用 `SSS_SMOKE_PORT=8789 npm run smoke:local` 修改端口。
 
 自动测试使用单独临时 D1/Worker，覆盖节点 CRUD、隐藏、并发版本冲突、Python 上报和资源加载；部署流程的 CF API/发布使用替身验证，生成的生产配置使用真实 Wrangler dry-run 编译。不会操作真实账号。Linux service 控制使用替身，不能代替实际 VPS 验证。
 

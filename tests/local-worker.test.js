@@ -36,6 +36,22 @@ async function freePort() {
   return port;
 }
 
+async function restartWorker() {
+  const args = worker.spawnargs.slice(1);
+  worker.kill('SIGTERM');
+  await once(worker, 'exit');
+  worker = spawn(process.execPath, args, { cwd: root,
+    env: { ...process.env, WRANGLER_LOG_PATH: logFile, WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false', CLOUDFLARE_INCLUDE_PROCESS_ENV: 'false' },
+    stdio: ['ignore', 'pipe', 'pipe'] });
+  worker.stdout.on('data', data => { workerOutput += data.toString(); });
+  worker.stderr.on('data', data => { workerOutput += data.toString(); });
+  for (let i = 0; i < 100; i++) {
+    try { if ((await fetch(`${baseUrl}/api/health`)).ok) return; } catch {}
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  throw new Error(workerOutput);
+}
+
 async function putConfig(revision, config) {
   return fetch(`${baseUrl}/api/admin/config`, {
     method: 'PUT', headers,
@@ -86,7 +102,7 @@ before(async () => {
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
   worker = spawn(process.execPath, [
-    wrangler, 'dev', '--config', 'wrangler.local.toml', '--ip', '127.0.0.1',
+    wrangler, 'dev', '--inspector-port', '0', '--config', 'wrangler.local.toml', '--ip', '127.0.0.1',
     '--port', String(port), '--persist-to', '.wrangler/test-state', '--log-level', 'error',
   ], {
     cwd: root,
@@ -214,7 +230,7 @@ test('local Cloudflare Worker and dashboard acceptance cases', async (t) => {
       { network_in: 0 }, { network_in: 0, network_out: 0, cpu: 'NaN' }]) {
       assert.equal((await fetch(`${baseUrl}/api/agent/report`, {
         method: 'POST', headers, body: JSON.stringify({ username: 'visible-user', password: 'visible-pass', metrics }),
-      })).status, 400);
+      })).status, 400, JSON.stringify(metrics) + workerOutput);
     }
     const valid = await fetch(`${baseUrl}/api/agent/report`, {
       method: 'POST', headers,
@@ -450,6 +466,8 @@ exec "$SSS_TEST_REAL_CURL" "\${args[@]}"
     assert.equal(node.monthly_network_in, 580);
     runWrangler(['d1', 'execute', 'sss-server-status-local', '--local', '--config', 'wrangler.local.toml',
       '--persist-to', '.wrangler/test-state', '--command', "UPDATE agent_metrics SET traffic_period = '2000-01' WHERE username = 'visible-user'"]);
+    // A direct database fixture edit becomes visible after hub reconstruction.
+    await restartWorker();
     node = await send(200, 300);
     assert.equal(node.monthly_network_in, 0);
   });

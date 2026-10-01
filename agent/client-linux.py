@@ -7,7 +7,7 @@ AGENT_PROTOCOL = "sss-worker-https-v1"
 USER = ""
 PASSWORD = ""
 INTERVAL = 1
-REPORT_INTERVAL = 15
+REPORT_INTERVAL = 1
 WORKER_URL = ""
 PROBEPORT = 80
 PROBE_PROTOCOL_PREFER = "ipv4"  # ipv4, ipv6
@@ -311,21 +311,196 @@ def configure(arguments):
     if not WORKER_URL.startswith(('https://', 'http://')):
         raise ValueError('WORKER_URL must be an HTTP(S) URL')
 
+class AgentWebSocket:
+    """Bounded RFC 6455 client using Python's TLS-verifying standard library.
+
+    No shell/pip dependency is required on monitored hosts. Credentials travel
+    only in the encrypted upgrade headers, never in a URL or exception message.
+    """
+    def __init__(self, base_url, username, password):
+        from urllib.parse import urlsplit
+        import ssl, base64, hashlib
+        parsed = urlsplit(base_url)
+        if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError('Invalid Worker URL')
+        if any(c in username + password for c in '\r\n'):
+            raise ValueError('Invalid Agent credentials')
+        port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+        raw = socket.create_connection((parsed.hostname, port), timeout=20)
+        self.sock = raw
+        self.buffer = bytearray()
+        self.fragments = bytearray()
+        self.fragment_opcode = None
+        try:
+            if parsed.scheme == 'https':
+                self.sock = ssl.create_default_context().wrap_socket(raw, server_hostname=parsed.hostname)
+            key = base64.b64encode(os.urandom(16)).decode('ascii')
+            host = parsed.netloc
+            path = parsed.path.rstrip('/') + '/api/agent/ws'
+            request = ('GET ' + path + ' HTTP/1.1\r\nHost: ' + host + '\r\n'
+                       'Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n'
+                       'Sec-WebSocket-Key: ' + key + '\r\nX-Agent-User: ' + username + '\r\n'
+                       'Authorization: Bearer ' + password + '\r\nUser-Agent: ServerStatus-Agent/2.0\r\n\r\n')
+            self.sock.sendall(request.encode('utf-8'))
+            header = bytearray()
+            deadline = time.monotonic() + 20
+            while not header.endswith(b'\r\n\r\n'):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0: raise RuntimeError('WebSocket handshake timed out')
+                self.sock.settimeout(remaining)
+                chunk = self.sock.recv(1)
+                if not chunk:
+                    raise RuntimeError('WebSocket handshake closed')
+                header.extend(chunk)
+                if len(header) > 16384:
+                    raise RuntimeError('WebSocket handshake too large')
+            lines = header.decode('latin-1').split('\r\n')
+            status = lines[0].split(' ')[1]
+            if status != '101':
+                raise RuntimeError('WebSocket HTTP ' + (status if status.isdigit() else 'invalid'))
+            headers = dict((k.strip().lower(), v.strip()) for k, v in
+                           (line.split(':', 1) for line in lines[1:] if ':' in line))
+            expected = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
+            if (headers.get('sec-websocket-accept') != expected or
+                    headers.get('upgrade', '').lower() != 'websocket' or
+                    'upgrade' not in [v.strip() for v in headers.get('connection', '').lower().split(',')]):
+                raise RuntimeError('Invalid WebSocket handshake')
+        except Exception:
+            self.close()
+            raise
+
+    def close(self):
+        try: self.sock.close()
+        except OSError: pass
+
+    def send_frame(self, payload, opcode=1):
+        import struct
+        if len(payload) > 32768:
+            raise ValueError('Agent report too large')
+        mask = os.urandom(4)
+        size = len(payload)
+        head = bytes([0x80 | opcode, 0x80 | size]) if size < 126 else bytes([0x80 | opcode, 0xfe]) + struct.pack('!H', size)
+        masked = bytes(value ^ mask[i % 4] for i, value in enumerate(payload))
+        self.sock.settimeout(20)
+        self.sock.sendall(head + mask + masked)
+
+    def report(self, metrics):
+        self.send_frame(json.dumps({'metrics': metrics}, separators=(',', ':')).encode())
+
+    def receive(self, timeout):
+        import struct
+        deadline = time.monotonic() + max(0.001, timeout)
+        while True:
+            if len(self.buffer) >= 2:
+                first, second = self.buffer[:2]
+                opcode, final = first & 15, bool(first & 128)
+                if first & 112 or second & 128 or opcode not in (0, 1, 8, 9, 10):
+                    raise RuntimeError('Invalid WebSocket frame')
+                size, offset = second & 127, 2
+                width = 2 if size == 126 else 8 if size == 127 else 0
+                if len(self.buffer) >= offset + width:
+                    if width:
+                        size = struct.unpack('!H' if width == 2 else '!Q', self.buffer[offset:offset+width])[0]
+                        offset += width
+                    if size > 65536 or (opcode >= 8 and (not final or size > 125)):
+                        raise RuntimeError('WebSocket frame too large or invalid')
+                    if len(self.buffer) >= offset + size:
+                        payload = bytes(self.buffer[offset:offset+size])
+                        del self.buffer[:offset+size]
+                        if opcode == 8: raise RuntimeError('WebSocket closed; reconnecting')
+                        if opcode == 9:
+                            self.send_frame(payload, 10)
+                            continue
+                        if opcode == 10: continue
+                        if opcode == 1:
+                            if self.fragment_opcode is not None: raise RuntimeError('Invalid fragmented message')
+                            self.fragment_opcode = 1
+                        elif self.fragment_opcode is None:
+                            raise RuntimeError('Unexpected continuation')
+                        self.fragments.extend(payload)
+                        if len(self.fragments) > 65536: raise RuntimeError('WebSocket message too large')
+                        if final:
+                            result = json.loads(self.fragments.decode('utf-8'))
+                            self.fragments.clear()
+                            self.fragment_opcode = None
+                            return result
+                        continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0: return None
+            self.sock.settimeout(remaining)
+            try: data = self.sock.recv(4096)
+            except socket.timeout: return None
+            if not data: raise RuntimeError('WebSocket disconnected')
+            self.buffer.extend(data)
+
+
+def stream_metrics(connection, latest, on_ack):
+    seconds, next_report, last_ping, awaiting_ack = 60, 0, time.monotonic(), None
+    while True:
+        now = time.monotonic()
+        if awaiting_ack is not None and now - awaiting_ack > 20:
+            raise RuntimeError('WebSocket acknowledgement timed out')
+        if now >= next_report and awaiting_ack is None and latest['metrics'] and now - latest['time'] < 10:
+            connection.report(latest['metrics'])
+            awaiting_ack = now
+            next_report = now + seconds
+        if now - last_ping >= 30:
+            connection.send_frame(b'sss', 9)
+            last_ping = now
+        control = connection.receive(min(1, max(0.01, next_report - time.monotonic())))
+        if isinstance(control, dict) and control.get('type') in ('ack', 'interval'):
+            suggested = control.get('seconds')
+            if type(suggested) is not int or suggested not in (1, 3, 60):
+                raise RuntimeError('Invalid reporting interval')
+            new_interval = max(REPORT_INTERVAL, suggested)
+            if new_interval != seconds:
+                next_report = time.monotonic() if new_interval < seconds else time.monotonic() + new_interval
+            seconds = new_interval
+            if control['type'] == 'ack':
+                awaiting_ack = None
+                on_ack()
+
+
+def run_agent():
+    import random
+    latest = {'metrics': None, 'time': 0}
+    def collect():
+        timer = 10**12
+        while True:
+            try:
+                metrics, timer = collect_metrics(timer)
+                latest.update(metrics=metrics, time=time.monotonic())
+            except Exception as error:
+                print('Metric collection failed:', type(error).__name__, flush=True)
+                time.sleep(3)
+    def probe_network():
+        while True:
+            for family in (4, 6): network_online[family] = get_network(family)
+            time.sleep(10)
+    threading.Thread(target=probe_network, daemon=True).start()
+    threading.Thread(target=collect, daemon=True).start()
+    delay = 1
+    while True:
+        connection = None
+        try:
+            connection = AgentWebSocket(WORKER_URL, USER, PASSWORD)
+            def acknowledged():
+                nonlocal delay
+                delay = 1
+            stream_metrics(connection, latest, acknowledged)
+        except KeyboardInterrupt:
+            raise
+        except Exception as error:
+            # Never print raw remote frames, headers, URLs or credentials.
+            detail = str(error) if isinstance(error, RuntimeError) else type(error).__name__
+            print('Worker connection failed:', detail, flush=True)
+            time.sleep(delay + random.random())
+            delay = min(60, delay * 2)
+        finally:
+            if connection: connection.close()
+
 if __name__ == '__main__':
     configure(sys.argv[1:])
     socket.setdefaulttimeout(30)
     get_realtime_date()
-    last_report = 0
-    timer = 0
-    while True:
-        try:
-            metrics, timer = collect_metrics(timer=timer)
-            now = time.time()
-            if now - last_report >= REPORT_INTERVAL:
-                post_worker_report(metrics)
-                last_report = now
-        except KeyboardInterrupt:
-            raise
-        except Exception as e:
-            print("Worker report failed:", e)
-            time.sleep(3)
+    run_agent()

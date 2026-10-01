@@ -37,6 +37,10 @@ function harness(directory, overrides = {}) {
       const configPath = args[args.indexOf('--config') + 1];
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       assert.equal(config.assets.binding, 'ASSETS');
+      assert.deepEqual(config.assets.run_worker_first, ['/api/*', '/json/*']);
+      assert.equal(config.durable_objects.bindings[0].class_name, 'RealtimeHub');
+      assert.deepEqual(config.migrations[0].new_sqlite_classes, ['RealtimeHub']);
+      assert.ok(['1', '3'].includes(config.vars.SSS_REALTIME_INTERVAL));
       assert.equal(config.triggers.crons[0], '* * * * *');
       assert.equal(config.account_id, base.CLOUDFLARE_ACCOUNT_ID);
       if (args.includes('--secrets-file')) {
@@ -112,7 +116,7 @@ test('plan makes no network calls, launches no commands and writes no settings',
 test('invalid deployment settings stop before creating remote resources', async t => {
   const directory = fixture(t);
   const { deploy } = await modulePromise;
-  for (const settings of [{}, { ...base, SSS_WORKER_NAME: 'invalid name' }, { ...base, SSS_D1_ID: 'bad-id' },
+  for (const settings of [{}, { ...base, SSS_WORKER_NAME: 'invalid name' }, { ...base, SSS_D1_ID: 'bad-id' }, { ...base, SSS_REALTIME_INTERVAL: '2' },
     { ...base, TG_BOT_TOKEN: 'only-token' }, { ...base, SSS_WORKER_URL: 'http://localhost' },
     { ...base, SSS_WORKER_URL: 'https://existing.example.com' }]) {
     const h = harness(directory, { settings });
@@ -198,7 +202,7 @@ test('generated production config compiles with the pinned Wrangler without remo
     const result = spawnSync(command, args, { ...options, encoding: 'utf8',
       env: { ...options.env, WRANGLER_LOG_PATH: path.join(directory, 'wrangler.log') } });
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.match(result.stdout, /Read 9 files/);
+    assert.match(result.stdout, /Read 10 files/);
   };
   const { deploy } = await modulePromise;
   await deploy(h.options);

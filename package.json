@@ -10,7 +10,8 @@
     "smoke:local": "node scripts/local-smoke.mjs"
   },
   "devDependencies": {
-    "wrangler": "4.143.0"
+    "wrangler": "4.143.0",
+    "ws": "8.21.0"
   },
   "overrides": {
     "undici": "7.29.1"

@@ -262,6 +262,65 @@
       .catch(function () { /* keep last view on transient errors */ });
   }
 
+  var liveSocket = null, reconnectTimer = null, fallbackTimer = null, retryDelay = 1000;
+  var heartbeatTimer = null, openingTimer = null, lastLiveMessage = 0;
+  function markStale() {
+    document.getElementById('updated').textContent = 'Reconnecting · data may be stale';
+  }
+  function connectLive() {
+    if (document.hidden || liveSocket) return;
+    var url = new URL('api/live', window.location.href);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    var socket = new WebSocket(url.href);
+    liveSocket = socket;
+    openingTimer = setTimeout(function () { if (socket.readyState !== WebSocket.OPEN) { markStale(); socket.close(); } }, 15000);
+    socket.onopen = function () {
+      if (liveSocket !== socket) { socket.close(); return; }
+      clearTimeout(openingTimer);
+      lastLiveMessage = Date.now();
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = setInterval(function () {
+        if (Date.now() - lastLiveMessage > 90000) { markStale(); socket.close(); return; }
+        if (socket.readyState === WebSocket.OPEN) socket.send('ping');
+      }, 30000);
+    };
+    socket.onmessage = function (event) {
+      if (liveSocket !== socket) return;
+      lastLiveMessage = Date.now();
+      if (event.data === 'pong') return;
+      try {
+        var data = JSON.parse(event.data);
+        if (data.type === 'stats' && Array.isArray(data.servers)) {
+          render(data);
+          retryDelay = 1000;
+          clearInterval(fallbackTimer); fallbackTimer = null;
+        }
+      } catch (_) { markStale(); }
+    };
+    socket.onerror = function () { socket.close(); };
+    socket.onclose = function () {
+      if (liveSocket !== socket) return;
+      clearInterval(heartbeatTimer); clearTimeout(openingTimer);
+      liveSocket = null;
+      if (document.hidden) return;
+      markStale();
+      if (!fallbackTimer) fallbackTimer = setInterval(tick, 60000);
+      reconnectTimer = setTimeout(connectLive, retryDelay + Math.random() * 1000);
+      retryDelay = Math.min(retryDelay * 2, 60000);
+    };
+  }
+  function initLive() {
+    connectLive();
+    document.addEventListener('visibilitychange', function () {
+      clearTimeout(reconnectTimer);
+      if (document.hidden) {
+        clearInterval(heartbeatTimer); clearTimeout(openingTimer);
+        clearInterval(fallbackTimer); fallbackTimer = null;
+        if (liveSocket) { liveSocket.close(); liveSocket = null; }
+      } else { retryDelay = 1000; connectLive(); }
+    });
+  }
+
   /* ----------------- expandable detail row (老站手风琴式: 点击行就地展开) ----------------- */
   function findServer(name) {
     for (var i = 0; i < S.servers.length; i++) if ((S.servers[i].name || '') === name) return S.servers[i];
@@ -316,5 +375,5 @@
   initTheme();
   initExpand();
   tick();
-  setInterval(tick, 10000);
+  initLive();
 })();
